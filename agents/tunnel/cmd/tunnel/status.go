@@ -25,8 +25,12 @@ func newStatusCmd(o *rootOptions) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if cfg.Secret == "" {
-			return fmt.Errorf("auth secret is required; run tunnel login or pass --token")
+		accessToken := cfg.AccessToken
+		if accessToken == "" {
+			accessToken = cfg.Secret
+		}
+		if accessToken == "" {
+			return fmt.Errorf("login required; run tunnel login")
 		}
 		base, err := url.Parse(cfg.Server)
 		if err != nil {
@@ -38,7 +42,7 @@ func newStatusCmd(o *rootOptions) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		req.Header.Set("Authorization", "Bearer "+cfg.Secret)
+		req.Header.Set("Authorization", "Bearer "+accessToken)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return fmt.Errorf("get tunnel status: %w", err)

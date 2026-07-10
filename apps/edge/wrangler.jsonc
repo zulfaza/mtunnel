@@ -7,11 +7,18 @@
     "enabled": true,
   },
   "durable_objects": {
-    "bindings": [{ "name": "TUNNELS", "class_name": "TunnelDO" }],
+    "bindings": [
+      { "name": "TUNNELS", "class_name": "TunnelDO" },
+      { "name": "REGISTRY", "class_name": "RegistryDO" },
+    ],
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TunnelDO"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["TunnelDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["RegistryDO"] },
+  ],
   "vars": {
-    "TUNNEL_DOMAIN": "tunnel.makarima.xyz",
+    "TUNNEL_DOMAIN": "makarima.xyz",
+    "WORKOS_CLIENT_ID": "client_01K65Z0KC2ADHQJQ179WCEJ0KG",
     "DEV_ROUTING": "false",
     "REQUEST_TIMEOUT_MS": "30000",
     "MAX_PENDING_REQUESTS": "32",
@@ -20,9 +27,9 @@
     "HEARTBEAT_INTERVAL_MS": "20000",
     "HEARTBEAT_TIMEOUT_MS": "60000",
   },
-  // Deploy with: wrangler secret put AUTH_SECRET
+  // Secrets: AUTH_SECRET, WORKOS_API_KEY, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID
   "routes": [
-    { "pattern": "*.tunnel.makarima.xyz/*", "custom_domain": false },
-    { "pattern": "tunnel.makarima.xyz", "custom_domain": true },
+    { "pattern": "*.makarima.xyz/*", "custom_domain": false },
+    { "pattern": "makarima.xyz", "custom_domain": true },
   ],
 }

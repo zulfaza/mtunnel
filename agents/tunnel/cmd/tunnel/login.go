@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,34 +12,24 @@ import (
 )
 
 func newLoginCmd(o *rootOptions) *cobra.Command {
-	return &cobra.Command{Use: "login", Short: "Store tunnel server credentials", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		server, err := prompt(cmd.OutOrStdout(), cmd.InOrStdin(), "Server URL")
+	return &cobra.Command{Use: "login", Short: "Sign in with Google through WorkOS", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		server := strings.TrimRight(strings.TrimSpace(o.server), "/")
+		if server == "" {
+			server = "https://makarima.xyz"
+		}
+		device, err := auth.StartDeviceLogin(context.Background(), http.DefaultClient, server)
 		if err != nil {
 			return err
 		}
-		secret, err := prompt(cmd.OutOrStdout(), cmd.InOrStdin(), "Auth secret")
+		fmt.Fprintf(cmd.OutOrStdout(), "Open this URL:\n%s\n\nConfirm code: %s\nWaiting for sign-in…\n", device.VerificationURIComplete, device.UserCode)
+		credentials, err := auth.WaitForDeviceLogin(context.Background(), http.DefaultClient, server, device)
 		if err != nil {
 			return err
 		}
-		server = strings.TrimRight(strings.TrimSpace(server), "/")
-		secret = strings.TrimSpace(secret)
-		if server == "" || secret == "" {
-			return fmt.Errorf("server URL and auth secret are required")
-		}
-		if _, err := auth.MintToken(context.Background(), http.DefaultClient, server, secret, "login-probe-"+randomHex(4)); err != nil {
-			return fmt.Errorf("login verification failed: %w", err)
-		}
-		if err := config.Save(o.config, config.Config{Server: server, Secret: secret}); err != nil {
+		if err := config.Save(o.config, config.Config{Server: server, AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken}); err != nil {
 			return err
 		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Signed in.")
 		return nil
 	}}
-}
-
-func randomHex(bytes int) string {
-	b := make([]byte, bytes)
-	if _, err := rand.Read(b); err != nil {
-		panic(err)
-	}
-	return hex.EncodeToString(b)
 }

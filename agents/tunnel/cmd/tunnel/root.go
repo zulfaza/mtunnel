@@ -40,7 +40,7 @@ func newRootCmd() *cobra.Command {
 	flags.StringVar(&o.name, "name", "", "tunnel name")
 	flags.DurationVar(&o.requestTimeout, "request-timeout", 30*time.Second, "upstream request timeout")
 	flags.StringVar(&o.logLevel, "log-level", "info", "debug, info, warn, or error")
-	cmd.AddCommand(newLoginCmd(o), newHTTPCmd(o), newStatusCmd(o), newVersionCmd())
+	cmd.AddCommand(newLoginCmd(o), newHTTPCmd(o), newStatusCmd(o), newDomainCmd(o), newUpdateCmd(), newVersionCmd())
 	return cmd
 }
 
@@ -74,7 +74,7 @@ func (o *rootOptions) loadConfig() (config.Config, error) {
 		cfg.Server = o.server
 	}
 	if o.token != "" {
-		cfg.Secret = o.token
+		cfg.AccessToken = o.token
 	}
 	if cfg.Server == "" {
 		return config.Config{}, fmt.Errorf("server URL is required; run tunnel login or pass --server")

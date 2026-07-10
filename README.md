@@ -15,6 +15,23 @@ TCP tunnel, traffic inspector, multi-user service, or production ingress.
 - Go 1.25 or newer
 - A Cloudflare Workers Paid account and a zone for the tunnel domain
 
+## Install
+
+```sh
+curl -fsSL https://makarima.xyz/install.sh | sh
+tunnel login
+tunnel http 3000 --name demo-tunnel
+```
+
+Login uses WorkOS AuthKit device authorization (including Google). Update with
+`tunnel update`. Add a custom hostname with:
+
+```sh
+tunnel domain add dev-dash.upsell.is --name demo-tunnel
+```
+
+Then create the printed CNAME record to `makarima.xyz`.
+
 ## Local quick start
 
 Install dependencies and build the agent:
@@ -57,7 +74,7 @@ enabled only when `DEV_ROUTING=true`.
 
 ## CLI
 
-Persist a server and root secret in a mode-0600 config file:
+Persist WorkOS credentials in a mode-0600 config file:
 
 ```sh
 ./agents/tunnel/bin/tunnel login

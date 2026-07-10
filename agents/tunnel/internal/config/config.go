@@ -9,8 +9,10 @@ import (
 )
 
 type Config struct {
-	Server string `json:"server"`
-	Secret string `json:"secret"`
+	Server       string `json:"server"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken,omitempty"`
+	Secret       string `json:"secret,omitempty"` // Legacy development config.
 }
 
 func DefaultPath() string {

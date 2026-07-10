@@ -127,6 +127,19 @@ describe("edge Worker routes", () => {
     await expect(response.json()).resolves.toEqual({ status: "ok" });
   });
 
+  it("serves landing, installer, and browser error pages", async () => {
+    const landing = await SELF.fetch("http://worker.test/");
+    expect(landing.headers.get("content-type")).toContain("text/html");
+    expect(await landing.text()).toContain("Your localhost");
+    const installer = await SELF.fetch("http://worker.test/install.sh");
+    expect(await installer.text()).toContain("github.com/$repo/releases/latest/download");
+    const offline = await SELF.fetch("http://worker.test/t/no-browser-agent", {
+      headers: { accept: "text/html" },
+    });
+    expect(offline.status).toBe(502);
+    expect(offline.headers.get("content-type")).toContain("text/html");
+  });
+
   it("rejects a bad root secret", async () => {
     const response = await SELF.fetch("http://worker.test/api/v1/auth/token", {
       method: "POST",
@@ -168,6 +181,7 @@ describe("edge Worker routes", () => {
       "http://worker.test/api/v1/tunnels/no-agent/status",
     );
     expect(unauthorizedStatus.status).toBe(401);
+    await tokenFor("no-agent");
     const status = await SELF.fetch("http://worker.test/api/v1/tunnels/no-agent/status", {
       headers: { authorization: "Bearer development-token" },
     });

@@ -1,8 +1,16 @@
 import type { TunnelDO } from "./durable-objects/tunnel-do.js";
+import type { RegistryDO } from "./durable-objects/registry-do.js";
 
 export interface Env {
   readonly TUNNELS: DurableObjectNamespace<TunnelDO>;
-  readonly AUTH_SECRET: string;
+  readonly REGISTRY: DurableObjectNamespace<RegistryDO>;
+  readonly AUTH_SECRET?: string;
+  readonly AUTH_MODE?: string;
+  readonly WORKOS_CLIENT_ID: string;
+  readonly WORKOS_API_KEY?: string;
+  readonly WORKOS_ISSUER?: string;
+  readonly CLOUDFLARE_API_TOKEN?: string;
+  readonly CLOUDFLARE_ZONE_ID?: string;
   readonly TUNNEL_DOMAIN: string;
   readonly DEV_ROUTING: string;
   readonly REQUEST_TIMEOUT_MS?: string;

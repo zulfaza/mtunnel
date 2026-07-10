@@ -1,3 +1,5 @@
 AUTH_SECRET=development-token
+AUTH_MODE=development
+WORKOS_CLIENT_ID=client_REPLACE_ME
 DEV_ROUTING=true
-TUNNEL_DOMAIN=tunnel.example.com
+TUNNEL_DOMAIN=worker.test

@@ -13,6 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zul/ztunnel/agents/tunnel/internal/agent"
+	"github.com/zul/ztunnel/agents/tunnel/internal/auth"
+	"github.com/zul/ztunnel/agents/tunnel/internal/config"
 	"github.com/zul/ztunnel/agents/tunnel/internal/protocol"
 )
 
@@ -26,8 +28,12 @@ func newHTTPCmd(o *rootOptions) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if cfg.Secret == "" {
-			return fmt.Errorf("auth secret is required; run tunnel login or pass --token")
+		accessToken := cfg.AccessToken
+		if accessToken == "" {
+			accessToken = cfg.Secret
+		}
+		if accessToken == "" {
+			return fmt.Errorf("login required; run tunnel login")
 		}
 		name := o.name
 		if name == "" {
@@ -36,7 +42,9 @@ func newHTTPCmd(o *rootOptions) *cobra.Command {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		first := true
-		return agent.Run(ctx, agent.Options{Server: cfg.Server, Secret: cfg.Secret, TunnelID: name, Hostname: o.hostname, Port: port, RequestTimeout: o.requestTimeout, Logger: o.logger, OnConnected: func(ack protocol.HelloAck, reconnected bool) {
+		return agent.Run(ctx, agent.Options{Server: cfg.Server, Secret: accessToken, RefreshToken: cfg.RefreshToken, OnCredentials: func(credentials auth.Credentials) error {
+			return config.Save(o.config, config.Config{Server: cfg.Server, AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken})
+		}, TunnelID: name, Hostname: o.hostname, Port: port, RequestTimeout: o.requestTimeout, Logger: o.logger, OnConnected: func(ack protocol.HelloAck, reconnected bool) {
 			if first && !reconnected {
 				fmt.Fprintf(cmd.OutOrStdout(), "Tunnel connected\n\nPublic URL:\n%s\n\nForwarding:\nhttp://127.0.0.1:%d\n", ack.PublicURL, port)
 				first = false

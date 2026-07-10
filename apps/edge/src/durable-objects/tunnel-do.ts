@@ -21,6 +21,7 @@ import { jsonError } from "../utils/json.js";
 import { headersToPairs, stripHopByHopHeaderPairs } from "../utils/headers.js";
 import { logEvent } from "../utils/logging.js";
 import type { Env } from "../env.js";
+import { errorPage } from "../pages.js";
 
 interface Attachment {
   readonly tunnelId: string;
@@ -247,7 +248,15 @@ export class TunnelDO extends DurableObject<Env> {
   private async handleProxy(request: Request): Promise<Response> {
     const socket = this.connectedSocket();
     const tunnelId = request.headers.get("x-ztunnel-id");
-    if (socket === null || tunnelId === null) return cacheJson(502, "tunnel_offline");
+    if (socket === null || tunnelId === null) {
+      if (request.headers.get("accept")?.includes("text/html") === true)
+        return errorPage(
+          502,
+          "tunnel_offline",
+          "This tunnel is offline. Start the local agent and try again.",
+        );
+      return cacheJson(502, "tunnel_offline");
+    }
     if (this.pending.size >= this.limits.maxPendingRequests)
       return cacheJson(503, "too_many_requests");
 

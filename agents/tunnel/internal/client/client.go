@@ -28,6 +28,8 @@ type MessageFunc func(protocol.Message)
 type Options struct {
 	Server         string
 	Secret         string
+	RefreshToken   string
+	OnCredentials  func(auth.Credentials) error
 	TunnelID       string
 	AgentVersion   string
 	HTTPClient     *http.Client
@@ -52,6 +54,18 @@ func Run(ctx context.Context, opts Options) error {
 	for {
 		if ctx.Err() != nil {
 			return nil
+		}
+		if opts.RefreshToken != "" {
+			credentials, refreshErr := auth.Refresh(ctx, opts.HTTPClient, opts.Server, opts.RefreshToken)
+			if refreshErr != nil {
+				return refreshErr
+			}
+			opts.Secret, opts.RefreshToken = credentials.AccessToken, credentials.RefreshToken
+			if opts.OnCredentials != nil {
+				if saveErr := opts.OnCredentials(credentials); saveErr != nil {
+					return saveErr
+				}
+			}
 		}
 		ack, err := runOnce(ctx, opts)
 		if errors.Is(err, ErrReplaced) {

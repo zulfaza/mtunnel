@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zul/ztunnel/agents/tunnel/internal/auth"
 	"github.com/zul/ztunnel/agents/tunnel/internal/client"
 	"github.com/zul/ztunnel/agents/tunnel/internal/protocol"
 	"github.com/zul/ztunnel/agents/tunnel/internal/proxy"
@@ -17,6 +18,8 @@ import (
 type Options struct {
 	Server         string
 	Secret         string
+	RefreshToken   string
+	OnCredentials  func(auth.Credentials) error
 	TunnelID       string
 	Hostname       string
 	Port           int
@@ -84,7 +87,7 @@ func Run(ctx context.Context, opts Options) error {
 			mu.Unlock()
 		}
 	}
-	err := client.Run(ctx, client.Options{Server: opts.Server, Secret: opts.Secret, TunnelID: opts.TunnelID, AgentVersion: "dev", HTTPClient: httpClient, Logger: opts.Logger, InitialBackoff: opts.InitialBackoff, OnOpen: onOpen, OnMessage: onMessage})
+	err := client.Run(ctx, client.Options{Server: opts.Server, Secret: opts.Secret, RefreshToken: opts.RefreshToken, OnCredentials: opts.OnCredentials, TunnelID: opts.TunnelID, AgentVersion: "dev", HTTPClient: httpClient, Logger: opts.Logger, InitialBackoff: opts.InitialBackoff, OnOpen: onOpen, OnMessage: onMessage})
 	if err == client.ErrReplaced {
 		opts.Logger.Warn("tunnel replaced by a newer agent", "tunnelId", opts.TunnelID)
 	}

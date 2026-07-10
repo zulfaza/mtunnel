@@ -2,14 +2,14 @@
 
 ## Prerequisites
 
-Use a Cloudflare Workers Paid account with Durable Objects enabled and a zone you
-control. Choose a dedicated tunnel domain such as `tunnel.example.com`.
+Use a Cloudflare Workers Paid account with Durable Objects and Cloudflare for
+SaaS enabled on the `makarima.xyz` zone.
 
 ## Configure
 
 Edit `apps/edge/wrangler.jsonc`:
 
-1. Set `TUNNEL_DOMAIN` to the chosen base domain.
+1. Set `TUNNEL_DOMAIN=makarima.xyz` and replace `WORKOS_CLIENT_ID`.
 2. Review request, response, pending-request, timeout, and heartbeat limits.
 3. Replace the placeholder route comments with routes for the base and wildcard
    hostnames appropriate to your zone.
@@ -21,10 +21,13 @@ Create a high-entropy root secret and upload it without putting it in source:
 cd apps/edge
 openssl rand -base64 48
 pnpm exec wrangler secret put AUTH_SECRET
+pnpm exec wrangler secret put WORKOS_API_KEY
+pnpm exec wrangler secret put CLOUDFLARE_API_TOKEN
+pnpm exec wrangler secret put CLOUDFLARE_ZONE_ID
 ```
 
-Store the generated value in a password manager. It authorizes token minting and
-status reads and must be shared only with trusted agent users.
+Enable AuthKit CLI Auth and Google OAuth in WorkOS. `AUTH_SECRET` signs only
+short-lived internal agent tokens; users never receive it.
 
 ## DNS and routes
 
