@@ -11,7 +11,7 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TunnelDO"] }],
   "vars": {
-    "TUNNEL_DOMAIN": "tunnel.example.com",
+    "TUNNEL_DOMAIN": "tunnel.makarima.xyz",
     "DEV_ROUTING": "false",
     "REQUEST_TIMEOUT_MS": "30000",
     "MAX_PENDING_REQUESTS": "32",
@@ -21,5 +21,8 @@
     "HEARTBEAT_TIMEOUT_MS": "60000",
   },
   // Deploy with: wrangler secret put AUTH_SECRET
-  // "routes": [{ "pattern": "*.tunnel.example.com/*", "custom_domain": false }, { "pattern": "tunnel.example.com/*", "custom_domain": true }]
+  "routes": [
+    { "pattern": "*.tunnel.makarima.xyz/*", "custom_domain": false },
+    { "pattern": "tunnel.makarima.xyz", "custom_domain": true },
+  ],
 }
