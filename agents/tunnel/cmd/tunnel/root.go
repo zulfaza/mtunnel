@@ -20,6 +20,7 @@ type rootOptions struct {
 	hostname       string
 	name           string
 	requestTimeout time.Duration
+	idleTimeout    time.Duration
 	logLevel       string
 	logger         *slog.Logger
 }
@@ -39,6 +40,7 @@ func newRootCmd() *cobra.Command {
 	flags.StringVar(&o.hostname, "hostname", "127.0.0.1", "local upstream hostname")
 	flags.StringVar(&o.name, "name", "", "tunnel name")
 	flags.DurationVar(&o.requestTimeout, "request-timeout", 30*time.Second, "upstream request timeout")
+	flags.DurationVar(&o.idleTimeout, "idle-timeout", 15*time.Minute, "close tunnel after this long without a request (0 disables)")
 	flags.StringVar(&o.logLevel, "log-level", "info", "debug, info, warn, or error")
 	cmd.AddCommand(newLoginCmd(o), newHTTPCmd(o), newStatusCmd(o), newDomainCmd(o), newUpdateCmd(), newVersionCmd())
 	return cmd

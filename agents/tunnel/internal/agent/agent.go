@@ -24,6 +24,7 @@ type Options struct {
 	Hostname       string
 	Port           int
 	RequestTimeout time.Duration
+	IdleTimeout    time.Duration // Close the tunnel after this long without a request; 0 disables.
 	Logger         *slog.Logger
 	HTTPClient     *http.Client
 	InitialBackoff time.Duration
@@ -42,10 +43,27 @@ func Run(ctx context.Context, opts Options) error {
 	if httpClient == nil {
 		httpClient = &http.Client{Transport: &http.Transport{DisableCompression: true, Proxy: http.ProxyFromEnvironment}}
 	}
+	var idle *time.Timer
+	if opts.IdleTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		idle = time.AfterFunc(opts.IdleTimeout, func() {
+			opts.Logger.Info("closing tunnel after inactivity", "tunnelId", opts.TunnelID, "idleTimeout", opts.IdleTimeout)
+			cancel()
+		})
+		defer idle.Stop()
+	}
 	var mu sync.RWMutex
 	var current *proxy.Dispatcher
 	connected := false
 	onMessage := func(message protocol.Message) {
+		if idle != nil {
+			switch message.(type) {
+			case protocol.RequestStart, protocol.RequestBody, protocol.RequestEnd:
+				idle.Reset(opts.IdleTimeout)
+			}
+		}
 		mu.RLock()
 		d := current
 		mu.RUnlock()

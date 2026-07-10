@@ -19,15 +19,15 @@ TCP tunnel, traffic inspector, multi-user service, or production ingress.
 
 ```sh
 curl -fsSL https://makarima.xyz/install.sh | sh
-tunnel login
-tunnel http 3000 --name demo-tunnel
+ztunnel login
+ztunnel http 3000 --name demo-tunnel
 ```
 
 Login uses WorkOS AuthKit device authorization (including Google). Update with
-`tunnel update`. Add a custom hostname with:
+`ztunnel update`. Add a custom hostname with:
 
 ```sh
-tunnel domain add dev-dash.upsell.is --name demo-tunnel
+ztunnel domain add dev-dash.upsell.is --name demo-tunnel
 ```
 
 Then create the printed CNAME record to `makarima.xyz`.
@@ -51,7 +51,7 @@ pnpm dev:edge
 In another terminal, start a local application and the tunnel agent:
 
 ```sh
-./agents/tunnel/bin/tunnel http 3000 \
+./agents/tunnel/bin/ztunnel http 3000 \
   --server http://127.0.0.1:8787 \
   --token development-token \
   --name local-test
@@ -77,20 +77,20 @@ enabled only when `DEV_ROUTING=true`.
 Persist WorkOS credentials in a mode-0600 config file:
 
 ```sh
-./agents/tunnel/bin/tunnel login
+./agents/tunnel/bin/ztunnel login
 ```
 
 Then open or inspect a named tunnel:
 
 ```sh
-./agents/tunnel/bin/tunnel http 3000 --name demo-tunnel
-./agents/tunnel/bin/tunnel status demo-tunnel
-./agents/tunnel/bin/tunnel version
+./agents/tunnel/bin/ztunnel http 3000 --name demo-tunnel
+./agents/tunnel/bin/ztunnel status demo-tunnel
+./agents/tunnel/bin/ztunnel version
 ```
 
 Common flags are `--server`, `--token`, `--config`, `--hostname`, `--name`,
 `--request-timeout`, and `--log-level`. Command-line secrets can be visible in
-the local process list; prefer `tunnel login` for routine use.
+the local process list; prefer `ztunnel login` for routine use.
 
 Only one agent may own a tunnel name. A newer connection replaces the older one.
 The agent automatically re-mints a short-lived token and reconnects with
