@@ -250,6 +250,45 @@ describe("fake-agent proxy lifecycle", () => {
     }
   });
 
+  it("hides accept-encoding from the agent and drops upstream compression framing", async () => {
+    const agent = await openAgent("encoding-tunnel");
+    try {
+      const client = SELF.fetch("http://worker.test/t/encoding-tunnel/asset", {
+        headers: { "accept-encoding": "gzip, br, zstd" },
+      });
+      const start = await nextStart(agent);
+      expect(start.headers.some(([name]) => name.toLowerCase() === "accept-encoding")).toBe(false);
+      await nextKind(agent, "requestEnd");
+      agent.ws.send(
+        encodeMessage({
+          kind: "responseStart",
+          requestId: start.requestId,
+          status: 200,
+          headers: [
+            ["content-type", "text/plain"],
+            ["content-encoding", "gzip"],
+            ["content-length", "999"],
+          ],
+          hasBody: true,
+        }),
+      );
+      agent.ws.send(
+        encodeMessage({
+          kind: "responseBody",
+          requestId: start.requestId,
+          data: new TextEncoder().encode("plain body"),
+        }),
+      );
+      agent.ws.send(encodeMessage({ kind: "responseEnd", requestId: start.requestId }));
+      const response = await client;
+      expect(response.headers.get("content-encoding")).toBeNull();
+      expect(response.headers.get("content-length")).toBeNull();
+      expect(await response.text()).toBe("plain body");
+    } finally {
+      agent.close();
+    }
+  });
+
   it("multiplexes interleaved requests by request id", async () => {
     const agent = await openAgent("multiplex-tunnel");
     try {

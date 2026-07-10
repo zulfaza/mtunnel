@@ -233,6 +233,10 @@ async function forwardProxy(
   url: URL,
 ): Promise<Response> {
   const headers = stripInternalHeaders(request.headers);
+  // Force the upstream to respond identity-encoded; the edge compresses for the
+  // eyeball. Relaying an already-compressed body makes workerd gzip it a second
+  // time, so the browser sees double-encoded garbage.
+  headers.delete("accept-encoding");
   headers.set("x-mtunnel-id", tunnelId);
   return env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
 }

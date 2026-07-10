@@ -370,8 +370,14 @@ export class TunnelDO extends DurableObject<Env> {
 
   private responseFromStart(message: ResponseStartMessage, pending: PendingRequest): Response {
     const headers = new Headers();
-    for (const [name, value] of stripHopByHopHeaderPairs(message.headers))
+    for (const [name, value] of stripHopByHopHeaderPairs(message.headers)) {
+      // Drop upstream compression framing: workerd re-encodes the body for the
+      // eyeball, so a stale content-encoding/-length would double-encode or
+      // mismatch the bytes we actually stream.
+      const normalized = name.toLowerCase();
+      if (normalized === "content-encoding" || normalized === "content-length") continue;
       headers.append(name, value);
+    }
     for (const [name, value] of Object.entries(CACHE_HEADERS)) headers.set(name, value);
     const body = new ReadableStream<Uint8Array>({
       start: (controller) => {
