@@ -25,25 +25,21 @@ func newStatusCmd(o *rootOptions) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		accessToken := cfg.AccessToken
-		if accessToken == "" {
-			accessToken = cfg.Secret
-		}
-		if accessToken == "" {
-			return fmt.Errorf("login required; run tunnel login")
-		}
 		base, err := url.Parse(cfg.Server)
 		if err != nil {
 			return fmt.Errorf("invalid server URL")
 		}
 		base.Path = strings.TrimRight(base.Path, "/") + "/api/v1/tunnels/" + url.PathEscape(id) + "/status"
 		base.RawQuery = ""
-		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, base.String(), nil)
-		if err != nil {
-			return err
-		}
-		req.Header.Set("Authorization", "Bearer "+accessToken)
-		resp, err := http.DefaultClient.Do(req)
+		ctx := context.Background()
+		resp, err := o.doAuthenticated(ctx, cfg, func(accessToken string) (*http.Request, error) {
+			req, requestErr := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+			if requestErr != nil {
+				return nil, requestErr
+			}
+			req.Header.Set("Authorization", "Bearer "+accessToken)
+			return req, nil
+		})
 		if err != nil {
 			return fmt.Errorf("get tunnel status: %w", err)
 		}

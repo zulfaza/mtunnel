@@ -12,10 +12,10 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-	"github.com/zul/ztunnel/agents/tunnel/internal/agent"
-	"github.com/zul/ztunnel/agents/tunnel/internal/auth"
-	"github.com/zul/ztunnel/agents/tunnel/internal/config"
-	"github.com/zul/ztunnel/agents/tunnel/internal/protocol"
+	"github.com/zul/mtunnel/agents/tunnel/internal/agent"
+	"github.com/zul/mtunnel/agents/tunnel/internal/auth"
+	"github.com/zul/mtunnel/agents/tunnel/internal/config"
+	"github.com/zul/mtunnel/agents/tunnel/internal/protocol"
 )
 
 func newHTTPCmd(o *rootOptions) *cobra.Command {
@@ -33,23 +33,43 @@ func newHTTPCmd(o *rootOptions) *cobra.Command {
 			accessToken = cfg.Secret
 		}
 		if accessToken == "" {
-			return fmt.Errorf("login required; run tunnel login")
+			return fmt.Errorf("login required; run mt login")
 		}
 		name := o.name
 		if name == "" {
 			name = randomName(8)
 		}
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		defer stop()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+		defer signal.Stop(signals)
+		shutdownRequested := make(chan struct{})
+		go func() {
+			select {
+			case <-signals:
+				signal.Stop(signals)
+				close(shutdownRequested)
+				fmt.Fprintln(cmd.ErrOrStderr(), "Shutting down tunnel…")
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
 		first := true
-		return agent.Run(ctx, agent.Options{Server: cfg.Server, Secret: accessToken, RefreshToken: cfg.RefreshToken, OnCredentials: func(credentials auth.Credentials) error {
+		err = agent.Run(ctx, agent.Options{Server: cfg.Server, Secret: accessToken, RefreshToken: cfg.RefreshToken, OnCredentials: func(credentials auth.Credentials) error {
 			return config.Save(o.config, config.Config{Server: cfg.Server, AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken})
 		}, TunnelID: name, Hostname: o.hostname, Port: port, RequestTimeout: o.requestTimeout, IdleTimeout: o.idleTimeout, Logger: o.logger, OnConnected: func(ack protocol.HelloAck, reconnected bool) {
 			if first && !reconnected {
-				fmt.Fprintf(cmd.OutOrStdout(), "Tunnel connected\n\nPublic URL:\n%s\n\nForwarding:\nhttp://127.0.0.1:%d\n", ack.PublicURL, port)
+				fmt.Fprintf(cmd.OutOrStdout(), "Tunnel connected\n\nPublic URL:\n%s\n\nForwarding:\nhttp://%s:%d\n", ack.PublicURL, o.hostname, port)
 				first = false
 			}
 		}})
+		select {
+		case <-shutdownRequested:
+			fmt.Fprintln(cmd.ErrOrStderr(), "Tunnel stopped.")
+		default:
+		}
+		return err
 	}}
 }
 

@@ -130,7 +130,19 @@ describe("edge Worker routes", () => {
   it("serves landing, installer, and browser error pages", async () => {
     const landing = await SELF.fetch("http://worker.test/");
     expect(landing.headers.get("content-type")).toContain("text/html");
-    expect(await landing.text()).toContain("Your localhost");
+    const landingHtml = await landing.text();
+    expect(landingHtml).toContain("Your localhost");
+    expect(landingHtml).toContain('property="og:image" content="https://makarima.xyz/og.png"');
+    expect(landingHtml).toContain('rel="canonical" href="https://makarima.xyz/"');
+    expect(landingHtml).toContain('rel="icon" href="/favicon.ico"');
+    const favicon = await SELF.fetch("http://worker.test/favicon.ico");
+    expect(favicon.status).toBe(200);
+    expect(favicon.headers.get("content-type")).toBe("image/vnd.microsoft.icon");
+    const manifest = await SELF.fetch("http://worker.test/site.webmanifest");
+    await expect(manifest.json()).resolves.toMatchObject({
+      name: "makarima.xyz",
+      theme_color: "#fbfaf8",
+    });
     const installer = await SELF.fetch("http://worker.test/install.sh");
     expect(await installer.text()).toContain("github.com/$repo/releases/latest/download");
     const offline = await SELF.fetch("http://worker.test/t/no-browser-agent", {
@@ -157,6 +169,27 @@ describe("edge Worker routes", () => {
     });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ tunnelId: "demo-tunnel" });
+  });
+
+  it("creates a pending custom domain with DNS ownership records", async () => {
+    const response = await SELF.fetch("http://worker.test/api/v1/domains", {
+      method: "POST",
+      headers: { authorization: "Bearer development-token", "content-type": "application/json" },
+      body: JSON.stringify({ hostname: "app.customer.test", tunnelId: "custom-domain-test" }),
+    });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      hostname: "app.customer.test",
+      tunnelId: "custom-domain-test",
+      status: "pending_dns",
+      cname: { type: "CNAME", name: "app.customer.test", value: "worker.test" },
+      verification: { type: "TXT", name: "_mtunnel.app.customer.test" },
+    });
+    const status = await SELF.fetch("http://worker.test/api/v1/domains/app.customer.test/status", {
+      headers: { authorization: "Bearer development-token" },
+    });
+    expect(status.status).toBe(200);
+    await expect(status.json()).resolves.toMatchObject({ status: "pending_dns" });
   });
 
   it("requires an upgrade and valid token to connect", async () => {

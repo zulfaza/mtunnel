@@ -3,6 +3,11 @@
   "name": "tunnel-edge",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+  },
   "observability": {
     "enabled": true,
   },
@@ -16,6 +21,14 @@
     { "tag": "v1", "new_sqlite_classes": ["TunnelDO"] },
     { "tag": "v2", "new_sqlite_classes": ["RegistryDO"] },
   ],
+  "d1_databases": [
+    {
+      "binding": "DOMAINS",
+      "database_name": "mtunnel-domains",
+      "database_id": "d73b0447-a7ec-47c8-a804-30578f053b7c",
+      "migrations_dir": "migrations",
+    },
+  ],
   "vars": {
     "TUNNEL_DOMAIN": "makarima.xyz",
     "WORKOS_CLIENT_ID": "client_01K65Z0KC2ADHQJQ179WCEJ0KG",
@@ -26,10 +39,15 @@
     "MAX_RESPONSE_BYTES": "104857600",
     "HEARTBEAT_INTERVAL_MS": "20000",
     "HEARTBEAT_TIMEOUT_MS": "60000",
+    "WORKOS_ISSUER": "https://api.workos.com/user_management/client_01K65Z0KC2ADHQJQ179WCEJ0KG",
   },
   // Secrets: AUTH_SECRET, WORKOS_API_KEY, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID
   "routes": [
-    { "pattern": "*.makarima.xyz/*", "custom_domain": false },
+    {
+      "pattern": "*.makarima.xyz/*",
+      "zone_id": "3a5b618dd10571f2c8b61df91aca11ee",
+      "custom_domain": false,
+    },
     { "pattern": "makarima.xyz", "custom_domain": true },
   ],
 }

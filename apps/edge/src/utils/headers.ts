@@ -56,7 +56,7 @@ export function stripHopByHopHeaders(headers: Headers): Headers {
 export function stripInternalHeaders(headers: Headers): Headers {
   const result = new Headers();
   for (const [name, value] of headers) {
-    if (!name.toLowerCase().startsWith("x-ztunnel-")) result.append(name, value);
+    if (!name.toLowerCase().startsWith("x-mtunnel-")) result.append(name, value);
   }
   return result;
 }

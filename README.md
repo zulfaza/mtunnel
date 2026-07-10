@@ -1,6 +1,6 @@
-# ztunnel
+# mtunnel
 
-ztunnel is a small, self-hosted development tunnel for exposing a local HTTP
+mtunnel is a small, self-hosted development tunnel for exposing a local HTTP
 server through Cloudflare. A Worker routes public traffic to one Durable Object
 per tunnel; a Go agent maintains a hibernatable WebSocket connection and streams
 requests to localhost.
@@ -19,18 +19,23 @@ TCP tunnel, traffic inspector, multi-user service, or production ingress.
 
 ```sh
 curl -fsSL https://makarima.xyz/install.sh | sh
-ztunnel login
-ztunnel http 3000 --name demo-tunnel
+mt login
+mt http 3000 --name demo-tunnel
 ```
 
 Login uses WorkOS AuthKit device authorization (including Google). Update with
-`ztunnel update`. Add a custom hostname with:
+`mt update`. Add a custom hostname with:
 
 ```sh
-ztunnel domain add dev-dash.upsell.is --name demo-tunnel
+mt domain add dev-dash.upsell.is --name demo-tunnel
 ```
 
-Then create the printed CNAME record to `makarima.xyz`.
+Create the printed CNAME and TXT records, then verify and inspect provisioning:
+
+```sh
+mt domain verify dev-dash.upsell.is
+mt domain status dev-dash.upsell.is
+```
 
 ## Local quick start
 
@@ -51,7 +56,7 @@ pnpm dev:edge
 In another terminal, start a local application and the tunnel agent:
 
 ```sh
-./agents/tunnel/bin/ztunnel http 3000 \
+./agents/tunnel/bin/mt http 3000 \
   --server http://127.0.0.1:8787 \
   --token development-token \
   --name local-test
@@ -77,20 +82,20 @@ enabled only when `DEV_ROUTING=true`.
 Persist WorkOS credentials in a mode-0600 config file:
 
 ```sh
-./agents/tunnel/bin/ztunnel login
+./agents/tunnel/bin/mt login
 ```
 
 Then open or inspect a named tunnel:
 
 ```sh
-./agents/tunnel/bin/ztunnel http 3000 --name demo-tunnel
-./agents/tunnel/bin/ztunnel status demo-tunnel
-./agents/tunnel/bin/ztunnel version
+./agents/tunnel/bin/mt http 3000 --name demo-tunnel
+./agents/tunnel/bin/mt status demo-tunnel
+./agents/tunnel/bin/mt version
 ```
 
 Common flags are `--server`, `--token`, `--config`, `--hostname`, `--name`,
 `--request-timeout`, and `--log-level`. Command-line secrets can be visible in
-the local process list; prefer `ztunnel login` for routine use.
+the local process list; prefer `mt login` for routine use.
 
 Only one agent may own a tunnel name. A newer connection replaces the older one.
 The agent automatically re-mints a short-lived token and reconnects with
@@ -110,8 +115,8 @@ pnpm test:e2e
 ```
 
 The E2E test starts Wrangler, a fixture HTTP server, and the compiled agent on
-localhost. Override its ports with `ZTUNNEL_E2E_EDGE_PORT` and
-`ZTUNNEL_E2E_UPSTREAM_PORT`.
+localhost. Override its ports with `MTUNNEL_E2E_EDGE_PORT` and
+`MTUNNEL_E2E_UPSTREAM_PORT`.
 
 ## Documentation
 
@@ -125,8 +130,8 @@ localhost. Override its ports with `ZTUNNEL_E2E_EDGE_PORT` and
 
 ## Scope and limitations
 
-ztunnel supports streamed HTTP only. TCP, UDP, SSH, custom domains, dashboards,
-teams, analytics, replay, inspection, multiple agents per tunnel, and response
-caching are intentionally out of scope. Public tunnel URLs have no end-user
+mtunnel supports streamed HTTP only. TCP, UDP, SSH, dashboards, teams, analytics,
+replay, inspection, multiple agents per tunnel, and response caching are
+intentionally out of scope. Public tunnel URLs have no end-user
 authentication; anything reachable through the selected local port is public
 while the tunnel is connected.

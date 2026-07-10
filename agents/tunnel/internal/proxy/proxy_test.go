@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zul/ztunnel/agents/tunnel/internal/protocol"
+	"github.com/zul/mtunnel/agents/tunnel/internal/protocol"
 )
 
 func newTestDispatcher(t *testing.T, upstream string, timeout time.Duration) (*Dispatcher, <-chan protocol.Message, context.CancelFunc) {
@@ -93,6 +93,15 @@ func TestSimpleGETRoundTrip(t *testing.T) {
 	start, body := responseFor(t, messages, id)
 	if start.Status != http.StatusOK || string(body) != "hello" {
 		t.Fatalf("response = status %d body %q", start.Status, body)
+	}
+}
+
+func TestAccessLogFormatting(t *testing.T) {
+	if got := endpointPath("/hello?token=secret"); got != "/hello" {
+		t.Fatalf("endpoint path = %q, want /hello", got)
+	}
+	if got := httpStatus(http.StatusCreated); got != "201 Created" {
+		t.Fatalf("HTTP status = %q, want 201 Created", got)
 	}
 }
 

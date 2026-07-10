@@ -1,9 +1,10 @@
-module github.com/zul/ztunnel/agents/tunnel
+module github.com/zul/mtunnel/agents/tunnel
 
 go 1.25
 
 require (
 	github.com/coder/websocket v1.8.14
+	github.com/lmittmann/tint v1.1.3
 	github.com/spf13/cobra v1.10.2
 )
 

@@ -124,7 +124,7 @@ export class TunnelDO extends DurableObject<Env> {
   }
 
   override async fetch(request: Request): Promise<Response> {
-    switch (request.headers.get("x-ztunnel-op")) {
+    switch (request.headers.get("x-mtunnel-op")) {
       case "connect":
         return this.handleConnect(request);
       default:
@@ -158,8 +158,8 @@ export class TunnelDO extends DurableObject<Env> {
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return jsonError(426, "upgrade_required");
     }
-    const tunnelId = request.headers.get("x-ztunnel-id");
-    const publicOrigin = request.headers.get("x-ztunnel-public-origin");
+    const tunnelId = request.headers.get("x-mtunnel-id");
+    const publicOrigin = request.headers.get("x-mtunnel-public-origin");
     if (tunnelId === null || publicOrigin === null) return jsonError(400, "bad_request");
     for (const existing of this.ctx.getWebSockets()) existing.close(4001, "replaced");
     const pair = new WebSocketPair();
@@ -169,7 +169,7 @@ export class TunnelDO extends DurableObject<Env> {
     server.serializeAttachment({
       tunnelId,
       publicOrigin,
-      devRouting: request.headers.get("x-ztunnel-dev-routing") === "true",
+      devRouting: request.headers.get("x-mtunnel-dev-routing") === "true",
       handshakeComplete: false,
     } satisfies Attachment);
     return new Response(null, { status: 101, webSocket: client });
@@ -247,7 +247,7 @@ export class TunnelDO extends DurableObject<Env> {
 
   private async handleProxy(request: Request): Promise<Response> {
     const socket = this.connectedSocket();
-    const tunnelId = request.headers.get("x-ztunnel-id");
+    const tunnelId = request.headers.get("x-mtunnel-id");
     if (socket === null || tunnelId === null) {
       if (request.headers.get("accept")?.includes("text/html") === true)
         return errorPage(
@@ -295,7 +295,7 @@ export class TunnelDO extends DurableObject<Env> {
 
     const headers = stripHopByHopHeaderPairs(
       headersToPairs(request.headers).filter(
-        ([name]: [string, string]) => !name.toLowerCase().startsWith("x-ztunnel-"),
+        ([name]: [string, string]) => !name.toLowerCase().startsWith("x-mtunnel-"),
       ),
     );
     const url = new URL(request.url);

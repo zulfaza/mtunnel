@@ -6,9 +6,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import process from "node:process";
 
 const root = new URL("..", import.meta.url).pathname;
-const edgePort = Number.parseInt(process.env.ZTUNNEL_E2E_EDGE_PORT ?? "18787", 10);
-const upstreamPort = Number.parseInt(process.env.ZTUNNEL_E2E_UPSTREAM_PORT ?? "18788", 10);
-const tunnelId = "local-test";
+const edgePort = Number.parseInt(process.env.MTUNNEL_E2E_EDGE_PORT ?? "18787", 10);
+const upstreamPort = Number.parseInt(process.env.MTUNNEL_E2E_UPSTREAM_PORT ?? "18788", 10);
+const tunnelId = `local-test-${process.pid}`;
 const secret = "development-token";
 const publicBase = `http://127.0.0.1:${edgePort}/t/${tunnelId}`;
 const children = new Set();
@@ -57,6 +57,8 @@ function startEdge() {
       "--var",
       `AUTH_SECRET:${secret}`,
       "--var",
+      "AUTH_MODE:development",
+      "--var",
       "DEV_ROUTING:true",
       "--var",
       "REQUEST_TIMEOUT_MS:500",
@@ -99,6 +101,17 @@ let edge;
 let agent;
 try {
   checked("make", ["-C", "agents/tunnel", "build"]);
+  checked("pnpm", [
+    "--dir",
+    "apps/edge",
+    "exec",
+    "wrangler",
+    "d1",
+    "migrations",
+    "apply",
+    "mtunnel-domains",
+    "--local",
+  ]);
   upstream.listen(upstreamPort, "127.0.0.1");
   await once(upstream, "listening");
 
@@ -107,7 +120,7 @@ try {
     "Worker health",
     async () => (await fetch(`http://127.0.0.1:${edgePort}/health`)).ok,
   );
-  agent = child("agents/tunnel/bin/tunnel", [
+  agent = child("agents/tunnel/bin/mt", [
     "http",
     String(upstreamPort),
     "--server",
@@ -121,7 +134,10 @@ try {
     const response = await fetch(`http://127.0.0.1:${edgePort}/api/v1/tunnels/${tunnelId}/status`, {
       headers: { authorization: `Bearer ${secret}` },
     });
-    return response.ok && (await response.json()).connected === true;
+    const body = await response.json();
+    if (!response.ok)
+      throw new Error(`status endpoint returned ${response.status}: ${JSON.stringify(body)}`);
+    return body.connected === true;
   });
 
   const concurrent = await Promise.all(

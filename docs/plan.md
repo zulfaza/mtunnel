@@ -1,6 +1,6 @@
 # Implementation Plan & Status
 
-ztunnel — a Cloudflare-native development tunnel (ngrok-style): expose a local HTTP
+mtunnel — a Cloudflare-native development tunnel (ngrok-style): expose a local HTTP
 server through a public URL, streamed over a persistent WebSocket between a
 Cloudflare Worker + Durable Object and a Go agent.
 
@@ -54,7 +54,7 @@ base64url(claimsJSON)))`. Claims: `{sub, tunnelId, purpose: "agent", iat, exp}`,
   TTL 900 s (`TOKEN_TTL_SECONDS` in `@tunnel/config`). Validate signature
   (constant-time), expiry, tunnelId match, and `purpose === "agent"`. The root
   secret is the Worker secret `AUTH_SECRET`. Never log tokens or secrets.
-- **Token flow** — `tunnel login` stores server URL + auth secret in the agent
+- **Token flow** — `mt login` stores server URL + auth secret in the agent
   config file; the agent exchanges the secret for a fresh short-lived token via
   `POST /api/v1/auth/token` on **every** (re)connect.
 - **Credential transport** — short-lived connect tokens use the WebSocket
@@ -104,7 +104,7 @@ All done and verified:
 - [x] `packages/config` — default limits and TTL constants
 - [x] `packages/shared` — `TUNNEL_ID_PATTERN`, `isValidTunnelId`
 - [x] `apps/edge` — minimal Worker with `GET /health` → `{"status":"ok"}`, wrangler.jsonc (name `tunnel-edge`, compat date 2026-07-01, observability), `.dev.vars.example` (`AUTH_SECRET=development-token`, `DEV_ROUTING=true`, `TUNNEL_DOMAIN=tunnel.example.com`)
-- [x] `agents/tunnel` — Go module `github.com/zul/ztunnel/agents/tunnel` (go 1.25), Makefile (build/test/vet/clean), placeholder `main.go`
+- [x] `agents/tunnel` — Go module `github.com/zul/mtunnel/agents/tunnel` (go 1.25), Makefile (build/test/vet/clean), placeholder `main.go`
 - [x] `.editorconfig`, `.gitignore`, `.env.example`, stub `README.md`
 
 Notes for successors: `pnpm-workspace.yaml` has `onlyBuiltDependencies`
@@ -140,7 +140,7 @@ Done and verified in `apps/edge/src/{auth,durable-objects,routing,utils}`:
 
 Done and verified in `agents/tunnel/{cmd,internal/{agent,auth,client,config,proxy}}`:
 
-- [x] Cobra CLI, binary `tunnel`: `login`, `http <port>`, `status`, `version`
+- [x] Cobra CLI, binary `mt`: `login`, `http <port>`, `status`, `version`
 - [x] Flags: `--server`, `--token`, `--config`, `--hostname`, `--name`, `--request-timeout`, `--log-level`
 - [x] `login` — prompt for server + secret, verify by minting a token, save config with mode 0600
 - [x] `http` — random/explicit name, token minting, WebSocket Hello/HelloAck, server-driven public URL banner

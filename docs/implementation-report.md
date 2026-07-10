@@ -55,8 +55,8 @@ agent reconnect, and a successful request after reconnect.
 
 Set the tunnel domain and production limits, upload `AUTH_SECRET` with Wrangler,
 configure proxied base/wildcard DNS and Worker routes, and add the mandatory cache
-bypass rule. Deploy the Worker, verify `/health`, then run `tunnel login` and
-`tunnel http`. Full steps are in [deployment.md](./deployment.md).
+bypass rule. Deploy the Worker, verify `/health`, then run `mt login` and
+`mt http`. Full steps are in [deployment.md](./deployment.md).
 
 ## Known limitations
 
@@ -72,5 +72,5 @@ bypass rule. Deploy the Worker, verify `/health`, then run `tunnel login` and
 
 Within a future scope revision, the most useful additions would be optional
 viewer authentication, configurable platform rate limits, hidden terminal input
-for `tunnel login`, per-agent credentials/revocation, automated deployment checks,
+for `mt login`, per-agent credentials/revocation, automated deployment checks,
 and load/soak tests around slow consumers and maximum configured body sizes.

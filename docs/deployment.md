@@ -3,7 +3,7 @@
 ## Prerequisites
 
 Use a Cloudflare Workers Paid account with Durable Objects and Cloudflare for
-SaaS enabled on the `makarima.xyz` zone.
+SaaS enabled on the `makarima.xyz` zone. Configure an active fallback origin.
 
 ## Configure
 
@@ -24,6 +24,15 @@ pnpm exec wrangler secret put AUTH_SECRET
 pnpm exec wrangler secret put WORKOS_API_KEY
 pnpm exec wrangler secret put CLOUDFLARE_API_TOKEN
 pnpm exec wrangler secret put CLOUDFLARE_ZONE_ID
+```
+
+The Cloudflare API token needs `SSL and Certificates Write` for the tunnel zone.
+
+Create the D1 database, copy its ID into `wrangler.jsonc`, and apply migrations:
+
+```sh
+pnpm exec wrangler d1 create mtunnel-domains
+pnpm exec wrangler d1 migrations apply mtunnel-domains --remote
 ```
 
 Enable AuthKit CLI Auth and Google OAuth in WorkOS. `AUTH_SECRET` signs only
@@ -48,7 +57,7 @@ controlled `502 tunnel_offline` response.
 
 In the Cloudflare dashboard, create a Cache Rule for the entire tunnel hostname
 space and set the cache eligibility action to bypass. Match both the base domain
-and subdomains. Keep this rule even though ztunnel also overwrites response
+and subdomains. Keep this rule even though mtunnel also overwrites response
 headers with `Cache-Control: no-store, no-cache, must-revalidate, private`,
 `Pragma: no-cache`, and `Expires: 0`. The dashboard rule is defense in depth
 against other cache configuration in the zone.
@@ -67,9 +76,9 @@ curl https://tunnel.example.com/health
 Expected health response: `{"status":"ok"}`. Then configure the agent:
 
 ```sh
-./agents/tunnel/bin/tunnel login
-./agents/tunnel/bin/tunnel http 3000 --name demo-tunnel
-./agents/tunnel/bin/tunnel status demo-tunnel
+./agents/tunnel/bin/mt login
+./agents/tunnel/bin/mt http 3000 --name demo-tunnel
+./agents/tunnel/bin/mt status demo-tunnel
 ```
 
 Verify TLS, duplicate Set-Cookie behavior, cache response headers, reconnect after
@@ -79,4 +88,4 @@ a Worker deployment, and the offline response after stopping the agent.
 
 Use Wrangler deployment history to roll back Worker code. Rotating `AUTH_SECRET`
 immediately invalidates stored agent credentials and all outstanding short-lived
-tokens; update the secret, rerun `tunnel login`, and reconnect agents.
+tokens; update the secret, rerun `mt login`, and reconnect agents.

@@ -1,4 +1,4 @@
-# ztunnel wire protocol v1
+# mtunnel wire protocol v1
 
 ## Overview
 

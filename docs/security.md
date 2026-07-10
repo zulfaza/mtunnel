@@ -2,7 +2,7 @@
 
 ## Trust model
 
-The root `AUTH_SECRET` is the administrative credential for a ztunnel deployment.
+The root `AUTH_SECRET` is the administrative credential for a mtunnel deployment.
 It authorizes short-lived token minting and tunnel-status reads. The agent stores
 the server URL and root secret in a mode-0600 configuration file. Agent connect
 tokens are HMAC-SHA256 signed, tunnel-bound, purpose-bound, and valid for 15
@@ -35,7 +35,7 @@ they intentionally omit tokens, authorization, cookies, query strings, and
 bodies.
 
 Hop-by-hop headers and headers named by `Connection` are stripped. Internal
-`x-ztunnel-*` headers supplied by public clients are removed. The Worker supplies
+`x-mtunnel-*` headers supplied by public clients are removed. The Worker supplies
 forwarding metadata and overwrites cache headers on every proxied response.
 
 ## Resource controls

@@ -1,4 +1,4 @@
-// Package protocol implements ztunnel wire protocol v1: a binary framing
+// Package protocol implements mtunnel wire protocol v1: a binary framing
 // codec with JSON metadata payloads. See docs/protocol.md for the full
 // specification. This package mirrors packages/protocol (TypeScript)
 // byte-for-byte; the two implementations are cross-checked against the

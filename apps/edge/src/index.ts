@@ -2,21 +2,42 @@ import { mintAgentToken, verifyAgentToken } from "./auth/index.js";
 import { authenticateUser, workosForm } from "./auth/workos.js";
 import { RegistryDO } from "./durable-objects/registry-do.js";
 import { TunnelDO } from "./durable-objects/tunnel-do.js";
+import {
+  addDomain,
+  domainStatus,
+  tunnelIdForDomain,
+  verifyDomain,
+  type DomainResult,
+} from "./domains.js";
 import type { Env } from "./env.js";
 import { tunnelIdFromDevPath, tunnelIdFromHost } from "./routing/index.js";
 import { stripInternalHeaders } from "./utils/headers.js";
 import { jsonError, jsonResponse } from "./utils/json.js";
 import { isValidTunnelId } from "@tunnel/shared";
-import { errorPage, installScript, landingPage } from "./pages.js";
+import { errorPage, installScript, landingPage, siteManifest, termsPage } from "./pages.js";
+
+const SITE_ASSET_PATHS = new Set([
+  "/android-chrome-192x192.png",
+  "/android-chrome-512x512.png",
+  "/apple-touch-icon.png",
+  "/favicon-16x16.png",
+  "/favicon-32x32.png",
+  "/favicon.ico",
+  "/favicon.png",
+  "/og.png",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function validTokenBody(
   value: unknown,
 ): { readonly tunnelId: string; readonly sub: string } | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  if (typeof record.tunnelId !== "string" || !isValidTunnelId(record.tunnelId)) return null;
-  if (record.sub !== undefined && typeof record.sub !== "string") return null;
-  return { tunnelId: record.tunnelId, sub: record.sub ?? "agent" };
+  if (!isRecord(value)) return null;
+  if (typeof value.tunnelId !== "string" || !isValidTunnelId(value.tunnelId)) return null;
+  if (value.sub !== undefined && typeof value.sub !== "string") return null;
+  return { tunnelId: value.tunnelId, sub: value.sub ?? "agent" };
 }
 
 async function handleToken(request: Request, env: Env): Promise<Response> {
@@ -87,7 +108,17 @@ function validHostname(value: string): boolean {
   );
 }
 
-async function handleDomain(request: Request, env: Env): Promise<Response> {
+function domainResponse(result: DomainResult): Response {
+  if (result.ok) return jsonResponse(result.domain, result.created === true ? 201 : 200);
+  const body = {
+    error: result.error,
+    ...(result.message === undefined ? {} : { message: result.message }),
+    ...(result.domain === undefined ? {} : { domain: result.domain }),
+  };
+  return jsonResponse(body, result.status);
+}
+
+async function handleDomainAdd(request: Request, env: Env): Promise<Response> {
   const auth = await authenticateUser(request, env);
   if (!auth.ok) return jsonError(401, "unauthorized");
   let value: unknown;
@@ -113,37 +144,49 @@ async function handleDomain(request: Request, env: Env): Promise<Response> {
     !isValidTunnelId(value.tunnelId)
   )
     return jsonError(400, "bad_request");
-  if (env.CLOUDFLARE_API_TOKEN === undefined || env.CLOUDFLARE_ZONE_ID === undefined)
-    return jsonError(503, "custom_domains_not_configured");
-  const registry = env.REGISTRY.getByName("global");
-  const stored = await registry.putDomain({
-    hostname,
-    tunnelId: value.tunnelId,
-    ownerId: auth.userId,
-    createdAt: Date.now(),
-  });
-  if (!stored) return jsonError(409, "domain_or_tunnel_taken");
-  const upstream = await globalThis.fetch(
-    `https://api.cloudflare.com/client/v4/zones/${env.CLOUDFLARE_ZONE_ID}/custom_hostnames`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ hostname, ssl: { method: "http", type: "dv" } }),
-    },
+  return domainResponse(
+    await addDomain(env, {
+      hostname,
+      tunnelId: value.tunnelId,
+      ownerId: auth.userId,
+    }),
   );
-  if (!upstream.ok && upstream.status !== 409) {
-    await registry.deleteDomain(hostname, auth.userId);
-    return jsonError(502, "custom_domain_provision_failed");
+}
+
+async function handleDomainAction(
+  request: Request,
+  env: Env,
+  hostnameValue: string,
+  action: "verify" | "status",
+): Promise<Response> {
+  const auth = await authenticateUser(request, env);
+  if (!auth.ok) return jsonError(401, "unauthorized");
+  const hostname = hostnameValue.trim().toLowerCase();
+  if (
+    !validHostname(hostname) ||
+    hostname === env.TUNNEL_DOMAIN ||
+    hostname.endsWith(`.${env.TUNNEL_DOMAIN}`)
+  )
+    return jsonError(400, "bad_request");
+  return domainResponse(
+    action === "verify"
+      ? await verifyDomain(env, hostname, auth.userId)
+      : await domainStatus(env, hostname, auth.userId),
+  );
+}
+
+function domainAction(
+  pathname: string,
+): { readonly hostname: string; readonly action: "verify" | "status" } | null {
+  const match = /^\/api\/v1\/domains\/([^/]+)\/(verify|status)$/u.exec(pathname);
+  if (match === null || match[1] === undefined || match[2] === undefined) return null;
+  let hostname: string;
+  try {
+    hostname = decodeURIComponent(match[1]);
+  } catch {
+    return null;
   }
-  return jsonResponse({
-    hostname,
-    tunnelId: value.tunnelId,
-    status: "pending_dns",
-    cname: env.TUNNEL_DOMAIN,
-  });
+  return match[2] === "verify" || match[2] === "status" ? { hostname, action: match[2] } : null;
 }
 
 function publicOrigin(url: URL): string {
@@ -176,10 +219,10 @@ async function forwardConnect(
   if (!verified.ok) return jsonError(401, "unauthorized", "invalid token");
   const headers = stripInternalHeaders(request.headers);
   headers.delete("authorization");
-  headers.set("x-ztunnel-op", "connect");
-  headers.set("x-ztunnel-id", tunnelId);
-  headers.set("x-ztunnel-public-origin", publicOrigin(url));
-  headers.set("x-ztunnel-dev-routing", env.DEV_ROUTING === "true" ? "true" : "false");
+  headers.set("x-mtunnel-op", "connect");
+  headers.set("x-mtunnel-id", tunnelId);
+  headers.set("x-mtunnel-public-origin", publicOrigin(url));
+  headers.set("x-mtunnel-dev-routing", env.DEV_ROUTING === "true" ? "true" : "false");
   return env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
 }
 
@@ -190,7 +233,7 @@ async function forwardProxy(
   url: URL,
 ): Promise<Response> {
   const headers = stripInternalHeaders(request.headers);
-  headers.set("x-ztunnel-id", tunnelId);
+  headers.set("x-mtunnel-id", tunnelId);
   return env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
 }
 
@@ -198,7 +241,12 @@ async function fetch(request: Request, env: Env, _ctx: ExecutionContext): Promis
   const url = new URL(request.url);
   const hostname = url.hostname.toLowerCase();
   const isPrimaryHost = hostname === env.TUNNEL_DOMAIN.toLowerCase();
+  if (request.method === "GET" && isPrimaryHost && SITE_ASSET_PATHS.has(url.pathname))
+    return env.ASSETS.fetch(request);
   if (request.method === "GET" && url.pathname === "/" && isPrimaryHost) return landingPage();
+  if (request.method === "GET" && url.pathname === "/terms" && isPrimaryHost) return termsPage();
+  if (request.method === "GET" && url.pathname === "/site.webmanifest" && isPrimaryHost)
+    return siteManifest();
   if (request.method === "GET" && url.pathname === "/install.sh" && isPrimaryHost)
     return installScript();
   if (request.method === "GET" && url.pathname === "/health") return jsonResponse({ status: "ok" });
@@ -211,7 +259,19 @@ async function fetch(request: Request, env: Env, _ctx: ExecutionContext): Promis
   if (request.method === "POST" && url.pathname === "/api/v1/auth/token")
     return handleToken(request, env);
   if (request.method === "POST" && url.pathname === "/api/v1/domains")
-    return handleDomain(request, env);
+    return handleDomainAdd(request, env);
+  const requestedDomainAction = domainAction(url.pathname);
+  if (
+    requestedDomainAction !== null &&
+    ((request.method === "POST" && requestedDomainAction.action === "verify") ||
+      (request.method === "GET" && requestedDomainAction.action === "status"))
+  )
+    return handleDomainAction(
+      request,
+      env,
+      requestedDomainAction.hostname,
+      requestedDomainAction.action,
+    );
 
   const connect = /^\/api\/v1\/tunnels\/([^/]+)\/connect$/u.exec(url.pathname);
   if (request.method === "GET" && connect !== null) {
@@ -232,8 +292,8 @@ async function fetch(request: Request, env: Env, _ctx: ExecutionContext): Promis
 
   const hostTunnelId = tunnelIdFromHost(request.headers.get("host"), env.TUNNEL_DOMAIN);
   if (hostTunnelId !== null) return forwardProxy(request, env, hostTunnelId, url);
-  const custom = await env.REGISTRY.getByName("global").getDomain(hostname);
-  if (custom !== null) return forwardProxy(request, env, custom.tunnelId, url);
+  const customTunnelId = await tunnelIdForDomain(env, hostname);
+  if (customTunnelId !== null) return forwardProxy(request, env, customTunnelId, url);
   if (env.DEV_ROUTING === "true") {
     const route = tunnelIdFromDevPath(url.pathname);
     if (route !== null) {

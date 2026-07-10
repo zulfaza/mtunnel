@@ -11,7 +11,7 @@
 
 ## Tunnel reports offline
 
-Run `tunnel status <name>` using the same saved credentials. Confirm the agent's
+Run `mt status <name>` using the same saved credentials. Confirm the agent's
 banner uses the expected tunnel ID. Only one agent can own a name; a newer agent
 closes the old connection with code 4001.
 
@@ -54,6 +54,6 @@ fix the mandatory bypass rule for the entire tunnel domain.
 ## Local tests fail to bind a port
 
 The Worker pool and E2E suite require localhost sockets. Stop stale Wrangler or
-agent processes, or override `ZTUNNEL_E2E_EDGE_PORT` and
-`ZTUNNEL_E2E_UPSTREAM_PORT`. Restricted sandboxes may need explicit loopback
+agent processes, or override `MTUNNEL_E2E_EDGE_PORT` and
+`MTUNNEL_E2E_UPSTREAM_PORT`. Restricted sandboxes may need explicit loopback
 permission.

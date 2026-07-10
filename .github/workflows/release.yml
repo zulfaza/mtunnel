@@ -29,8 +29,8 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
-          go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o tunnel ./cmd/tunnel
-          tar -czf "tunnel-${GOOS}-${GOARCH}.tar.gz" tunnel
+          go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o mt ./cmd/tunnel
+          tar -czf "mt-${GOOS}-${GOARCH}.tar.gz" mt
       - uses: softprops/action-gh-release@v2
         with:
-          files: agents/tunnel/tunnel-*.tar.gz
+          files: agents/tunnel/mt-*.tar.gz

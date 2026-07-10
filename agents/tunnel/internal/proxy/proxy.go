@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/zul/ztunnel/agents/tunnel/internal/protocol"
+	"github.com/zul/mtunnel/agents/tunnel/internal/protocol"
 )
 
 type SendFunc func(protocol.Message) error
@@ -196,7 +196,10 @@ func (d *Dispatcher) run(id protocol.RequestID, r *request) {
 		}
 	}
 	_ = d.send(protocol.ResponseEnd{RequestID: id})
-	d.logger.Info("request complete", "event", "request_complete", "tunnelId", d.tunnelID, "requestId", protocol.RequestIDHex(id), "method", r.start.Method, "status", resp.StatusCode, "duration", time.Since(started), "bytesIn", r.bytesIn.Load(), "bytesOut", out)
+	duration := time.Since(started)
+	path := endpointPath(r.start.Path)
+	d.logger.Info(r.start.Method+" "+path, "status", httpStatus(resp.StatusCode), "duration", duration)
+	d.logger.Debug("request details", "event", "request_complete", "tunnelId", d.tunnelID, "requestId", protocol.RequestIDHex(id), "method", r.start.Method, "path", path, "status", resp.StatusCode, "duration", duration, "bytesIn", r.bytesIn.Load(), "bytesOut", out)
 }
 
 func (d *Dispatcher) sendFailure(id protocol.RequestID, r *request, started time.Time, out int64, err error) {
@@ -205,7 +208,23 @@ func (d *Dispatcher) sendFailure(id protocol.RequestID, r *request, started time
 		message = "upstream request timed out"
 	}
 	_ = d.send(protocol.ErrorMessage{RequestID: id, Code: protocol.ErrorCodeUpstreamUnreachable, Message: message})
-	d.logger.Warn("request failed", "event", "request_failed", "tunnelId", d.tunnelID, "requestId", protocol.RequestIDHex(id), "method", r.start.Method, "duration", time.Since(started), "bytesIn", r.bytesIn.Load(), "bytesOut", out, "error", fmt.Sprint(err))
+	duration := time.Since(started)
+	path := endpointPath(r.start.Path)
+	d.logger.Warn(r.start.Method+" "+path, "status", httpStatus(http.StatusBadGateway), "duration", duration, "error", fmt.Sprint(err))
+	d.logger.Debug("request details", "event", "request_failed", "tunnelId", d.tunnelID, "requestId", protocol.RequestIDHex(id), "method", r.start.Method, "path", path, "status", http.StatusBadGateway, "duration", duration, "bytesIn", r.bytesIn.Load(), "bytesOut", out)
+}
+
+func endpointPath(value string) string {
+	path, _, _ := strings.Cut(value, "?")
+	return path
+}
+
+func httpStatus(code int) string {
+	text := http.StatusText(code)
+	if text == "" {
+		return fmt.Sprint(code)
+	}
+	return fmt.Sprintf("%d %s", code, text)
 }
 
 // Shutdown prevents new requests, cancels existing work, and waits at most wait.

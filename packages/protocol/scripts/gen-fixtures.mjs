@@ -48,7 +48,7 @@ function addValid(name, msg, frame) {
   const requestId = ZERO_ID;
   const json = {
     tunnelId: "swift-otter-42",
-    publicUrl: "https://swift-otter-42.ztunnel.dev",
+    publicUrl: "https://swift-otter-42.mtunnel.dev",
     heartbeatIntervalMs: 20000,
     heartbeatTimeoutMs: 60000,
     requestTimeoutMs: 30000,
