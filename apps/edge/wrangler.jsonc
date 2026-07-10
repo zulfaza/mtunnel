@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tunnel-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "observability": {
+    "enabled": true,
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "TUNNELS", "class_name": "TunnelDO" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TunnelDO"] }],
+  "vars": {
+    "TUNNEL_DOMAIN": "tunnel.example.com",
+    "DEV_ROUTING": "false",
+    "REQUEST_TIMEOUT_MS": "30000",
+    "MAX_PENDING_REQUESTS": "32",
+    "MAX_REQUEST_BYTES": "52428800",
+    "MAX_RESPONSE_BYTES": "104857600",
+    "HEARTBEAT_INTERVAL_MS": "20000",
+    "HEARTBEAT_TIMEOUT_MS": "60000",
+  },
+  // Deploy with: wrangler secret put AUTH_SECRET
+  // "routes": [{ "pattern": "*.tunnel.example.com/*", "custom_domain": false }, { "pattern": "tunnel.example.com/*", "custom_domain": true }]
+}

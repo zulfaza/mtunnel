@@ -1,0 +1,25 @@
+{
+  "name": "ztunnel",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "format": "oxfmt",
+    "dev:edge": "turbo dev --filter=@tunnel/edge",
+    "test:edge": "turbo test --filter=@tunnel/edge",
+    "build:agent": "make -C agents/tunnel build",
+    "test:agent": "make -C agents/tunnel test",
+    "test:e2e": "node scripts/e2e.mjs"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.58",
+    "oxlint": "^1.73",
+    "turbo": "^2.10",
+    "typescript": "^5"
+  },
+  "packageManager": "pnpm@10.12.3"
+}

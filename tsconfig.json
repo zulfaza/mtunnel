@@ -1,0 +1,13 @@
+{
+  "extends": "./packages/tsconfig/base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "files": [],
+  "references": [
+    { "path": "packages/protocol" },
+    { "path": "packages/config" },
+    { "path": "packages/shared" },
+    { "path": "apps/edge" }
+  ]
+}

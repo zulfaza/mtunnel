@@ -1,0 +1,26 @@
+{
+  "name": "@tunnel/edge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run --outdir=dist",
+    "lint": "oxlint",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts --passWithNoTests"
+  },
+  "dependencies": {
+    "@tunnel/config": "workspace:*",
+    "@tunnel/protocol": "workspace:*",
+    "@tunnel/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.18.2",
+    "@cloudflare/workers-types": "^5",
+    "@tunnel/tsconfig": "workspace:*",
+    "typescript": "^5",
+    "vitest": "^4.1.0",
+    "wrangler": "^4"
+  }
+}

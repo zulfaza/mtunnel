@@ -1,0 +1,240 @@
+{
+  "valid": [
+    {
+      "name": "hello",
+      "hex": "010100000000000000000000000000000000000000347b2274756e6e656c4964223a2273776966742d6f747465722d3432222c226167656e7456657273696f6e223a22302e322e30227d",
+      "frame": {
+        "type": 1,
+        "requestIdHex": "00000000000000000000000000000000",
+        "payload": {
+          "kind": "json",
+          "json": {
+            "tunnelId": "swift-otter-42",
+            "agentVersion": "0.2.0"
+          }
+        }
+      }
+    },
+    {
+      "name": "helloAck",
+      "hex": "010200000000000000000000000000000000000000b77b2274756e6e656c4964223a2273776966742d6f747465722d3432222c227075626c696355726c223a2268747470733a2f2f73776966742d6f747465722d34322e7a74756e6e656c2e646576222c22686561727462656174496e74657276616c4d73223a32303030302c2268656172746265617454696d656f75744d73223a36303030302c227265717565737454696d656f75744d73223a33303030302c226d61785061796c6f61644279746573223a3236323134347d",
+      "frame": {
+        "type": 2,
+        "requestIdHex": "00000000000000000000000000000000",
+        "payload": {
+          "kind": "json",
+          "json": {
+            "tunnelId": "swift-otter-42",
+            "publicUrl": "https://swift-otter-42.ztunnel.dev",
+            "heartbeatIntervalMs": 20000,
+            "heartbeatTimeoutMs": 60000,
+            "requestTimeoutMs": 30000,
+            "maxPayloadBytes": 262144
+          }
+        }
+      }
+    },
+    {
+      "name": "requestStart",
+      "hex": "01030102030405060708090a0b0c0d0e0f10000000967b226d6574686f64223a22474554222c2270617468223a222f6170692f75736572733f6163746976653d7472756526736f72743d6e616d65222c2268656164657273223a5b5b22416363657074222c226170706c69636174696f6e2f6a736f6e225d2c5b22582d437573746f6d222c2261225d2c5b22582d437573746f6d222c2262225d5d2c22686173426f6479223a66616c73657d",
+      "frame": {
+        "type": 3,
+        "requestIdHex": "0102030405060708090a0b0c0d0e0f10",
+        "payload": {
+          "kind": "json",
+          "json": {
+            "method": "GET",
+            "path": "/api/users?active=true&sort=name",
+            "headers": [
+              ["Accept", "application/json"],
+              ["X-Custom", "a"],
+              ["X-Custom", "b"]
+            ],
+            "hasBody": false
+          }
+        }
+      }
+    },
+    {
+      "name": "requestBody",
+      "hex": "01040102030405060708090a0b0c0d0e0f1000000020000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "frame": {
+        "type": 4,
+        "requestIdHex": "0102030405060708090a0b0c0d0e0f10",
+        "payload": {
+          "kind": "binary",
+          "hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+        }
+      }
+    },
+    {
+      "name": "requestEnd",
+      "hex": "01050102030405060708090a0b0c0d0e0f1000000000",
+      "frame": {
+        "type": 5,
+        "requestIdHex": "0102030405060708090a0b0c0d0e0f10",
+        "payload": {
+          "kind": "empty"
+        }
+      }
+    },
+    {
+      "name": "responseStart",
+      "hex": "01060102030405060708090a0b0c0d0e0f100000008f7b22737461747573223a3230302c2268656164657273223a5b5b22436f6e74656e742d54797065222c22746578742f706c61696e225d2c5b225365742d436f6f6b6965222c227369643d6162633132333b20506174683d2f225d2c5b225365742d436f6f6b6965222c227468656d653d6461726b3b20506174683d2f225d5d2c22686173426f6479223a747275657d",
+      "frame": {
+        "type": 6,
+        "requestIdHex": "0102030405060708090a0b0c0d0e0f10",
+        "payload": {
+          "kind": "json",
+          "json": {
+            "status": 200,
+            "headers": [
+              ["Content-Type", "text/plain"],
+              ["Set-Cookie", "sid=abc123; Path=/"],
+              ["Set-Cookie", "theme=dark; Path=/"]
+            ],
+            "hasBody": true
+          }
+        }
+      }
+    },
+    {
+      "name": "responseBody",
+      "hex": "01070102030405060708090a0b0c0d0e0f1000000010c8c9cacbcccdcecfd0d1d2d3d4d5d6d7",
+      "frame": {
+        "type": 7,
+        "requestIdHex": "0102030405060708090a0b0c0d0e0f10",
+        "payload": {
+          "kind": "binary",
+          "hex": "c8c9cacbcccdcecfd0d1d2d3d4d5d6d7"
+        }
+      }
+    },
+    {
+      "name": "responseEnd",
+      "hex": "01080102030405060708090a0b0c0d0e0f1000000000",
+      "frame": {
+        "type": 8,
+        "requestIdHex": "0102030405060708090a0b0c0d0e0f10",
+        "payload": {
+          "kind": "empty"
+        }
+      }
+    },
+    {
+      "name": "cancel_timeout",
+      "hex": "01090102030405060708090a0b0c0d0e0f10000000147b22726561736f6e223a2274696d656f7574227d",
+      "frame": {
+        "type": 9,
+        "requestIdHex": "0102030405060708090a0b0c0d0e0f10",
+        "payload": {
+          "kind": "json",
+          "json": {
+            "reason": "timeout"
+          }
+        }
+      }
+    },
+    {
+      "name": "cancel_client_disconnected",
+      "hex": "01090102030405060708090a0b0c0d0e0f10000000207b22726561736f6e223a22636c69656e745f646973636f6e6e6563746564227d",
+      "frame": {
+        "type": 9,
+        "requestIdHex": "0102030405060708090a0b0c0d0e0f10",
+        "payload": {
+          "kind": "json",
+          "json": {
+            "reason": "client_disconnected"
+          }
+        }
+      }
+    },
+    {
+      "name": "cancel_upstream_error",
+      "hex": "01090102030405060708090a0b0c0d0e0f100000001b7b22726561736f6e223a22757073747265616d5f6572726f72227d",
+      "frame": {
+        "type": 9,
+        "requestIdHex": "0102030405060708090a0b0c0d0e0f10",
+        "payload": {
+          "kind": "json",
+          "json": {
+            "reason": "upstream_error"
+          }
+        }
+      }
+    },
+    {
+      "name": "cancel_shutdown",
+      "hex": "01090102030405060708090a0b0c0d0e0f10000000157b22726561736f6e223a2273687574646f776e227d",
+      "frame": {
+        "type": 9,
+        "requestIdHex": "0102030405060708090a0b0c0d0e0f10",
+        "payload": {
+          "kind": "json",
+          "json": {
+            "reason": "shutdown"
+          }
+        }
+      }
+    },
+    {
+      "name": "ping",
+      "hex": "010a0000000000000000000000000000000000000000",
+      "frame": {
+        "type": 10,
+        "requestIdHex": "00000000000000000000000000000000",
+        "payload": {
+          "kind": "empty"
+        }
+      }
+    },
+    {
+      "name": "pong",
+      "hex": "010b0000000000000000000000000000000000000000",
+      "frame": {
+        "type": 11,
+        "requestIdHex": "00000000000000000000000000000000",
+        "payload": {
+          "kind": "empty"
+        }
+      }
+    },
+    {
+      "name": "error",
+      "hex": "010c0102030405060708090a0b0c0d0e0f100000004e7b22636f6465223a22757073747265616d5f756e726561636861626c65222c226d657373616765223a22636f6e6e656374696f6e20726566757365643a206c6f63616c686f73743a33303030227d",
+      "frame": {
+        "type": 12,
+        "requestIdHex": "0102030405060708090a0b0c0d0e0f10",
+        "payload": {
+          "kind": "json",
+          "json": {
+            "code": "upstream_unreachable",
+            "message": "connection refused: localhost:3000"
+          }
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "wrong_version",
+      "hex": "020a0000000000000000000000000000000000000000",
+      "errorCode": "invalid_version"
+    },
+    {
+      "name": "unknown_frame_type",
+      "hex": "01630000000000000000000000000000000000000000",
+      "errorCode": "unknown_frame_type"
+    },
+    {
+      "name": "truncated_header",
+      "hex": "010a030405060708090a",
+      "errorCode": "invalid_header"
+    },
+    {
+      "name": "payload_length_mismatch",
+      "hex": "01040102030405060708090a0b0c0d0e0f100000000a000102",
+      "errorCode": "length_mismatch"
+    }
+  ]
+}
