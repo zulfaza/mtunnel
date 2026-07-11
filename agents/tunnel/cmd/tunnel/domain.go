@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -25,6 +27,7 @@ type domainResult struct {
 	Status       string
 	CNAME        dnsRecord
 	Verification dnsRecord
+	LastUsedAt   *time.Time
 }
 
 type domainWireResult struct {
@@ -33,6 +36,7 @@ type domainWireResult struct {
 	Status       string          `json:"status"`
 	CNAME        json.RawMessage `json:"cname"`
 	Verification json.RawMessage `json:"verification"`
+	LastUsedAt   *time.Time      `json:"lastUsedAt"`
 }
 
 func decodeDNSRecord(value json.RawMessage, recordType, name string, required bool) (dnsRecord, error) {
@@ -78,6 +82,7 @@ func decodeDomainResult(value []byte) (domainResult, error) {
 		Status:       wire.Status,
 		CNAME:        cname,
 		Verification: verification,
+		LastUsedAt:   wire.LastUsedAt,
 	}, nil
 }
 
@@ -91,14 +96,14 @@ func domainEndpoint(server, path string) (string, error) {
 	return target.String(), nil
 }
 
-func executeDomainRequest(o *rootOptions, method, path string, body []byte) (domainResult, error) {
+func executeDomainHTTP(o *rootOptions, method, path string, body []byte) ([]byte, error) {
 	cfg, err := o.loadConfig()
 	if err != nil {
-		return domainResult{}, err
+		return nil, err
 	}
 	target, err := domainEndpoint(cfg.Server, path)
 	if err != nil {
-		return domainResult{}, err
+		return nil, err
 	}
 	ctx := context.Background()
 	resp, err := o.doAuthenticated(ctx, cfg, func(accessToken string) (*http.Request, error) {
@@ -113,21 +118,72 @@ func executeDomainRequest(o *rootOptions, method, path string, body []byte) (dom
 		return req, nil
 	})
 	if err != nil {
-		return domainResult{}, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	response, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return domainResult{}, err
+		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return domainResult{}, fmt.Errorf("server returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(response)))
+		return nil, fmt.Errorf("server returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(response)))
+	}
+	return response, nil
+}
+
+func executeDomainRequest(o *rootOptions, method, path string, body []byte) (domainResult, error) {
+	response, err := executeDomainHTTP(o, method, path, body)
+	if err != nil {
+		return domainResult{}, err
 	}
 	result, err := decodeDomainResult(response)
 	if err != nil {
 		return domainResult{}, fmt.Errorf("decode domain response: %w", err)
 	}
 	return result, nil
+}
+
+func executeDomainList(o *rootOptions) ([]domainResult, error) {
+	response, err := executeDomainHTTP(o, http.MethodGet, "/api/v1/domains", nil)
+	if err != nil {
+		return nil, err
+	}
+	var value struct {
+		Domains []json.RawMessage `json:"domains"`
+	}
+	if err := json.Unmarshal(response, &value); err != nil {
+		return nil, fmt.Errorf("decode domain list: %w", err)
+	}
+	results := make([]domainResult, 0, len(value.Domains))
+	for _, domain := range value.Domains {
+		result, decodeErr := decodeDomainResult(domain)
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decode domain list: %w", decodeErr)
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+func printDomainList(out io.Writer, domains []domainResult) error {
+	if len(domains) == 0 {
+		_, err := fmt.Fprintln(out, "No custom domains.")
+		return err
+	}
+	writer := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
+	if _, err := fmt.Fprintln(writer, "DOMAIN\tTUNNEL\tSTATUS\tLAST USED"); err != nil {
+		return err
+	}
+	for _, domain := range domains {
+		lastUsed := "never"
+		if domain.LastUsedAt != nil {
+			lastUsed = domain.LastUsedAt.Local().Format("2006-01-02 15:04:05 MST")
+		}
+		if _, err := fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", domain.Hostname, domain.TunnelID, domain.Status, lastUsed); err != nil {
+			return err
+		}
+	}
+	return writer.Flush()
 }
 
 func printDNSInstructions(out io.Writer, result domainResult) error {
@@ -162,6 +218,13 @@ func printDNSInstructions(out io.Writer, result domainResult) error {
 func newDomainCmd(o *rootOptions) *cobra.Command {
 	domain := &cobra.Command{Use: "domain", Short: "Manage custom domains"}
 	domain.AddCommand(
+		&cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List custom domains", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+			results, err := executeDomainList(o)
+			if err != nil {
+				return fmt.Errorf("list domains: %w", err)
+			}
+			return printDomainList(cmd.OutOrStdout(), results)
+		}},
 		&cobra.Command{Use: "add <hostname>", Short: "Add a custom domain", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 			if o.name == "" {
 				return fmt.Errorf("tunnel name required via --name")
@@ -193,6 +256,14 @@ func newDomainCmd(o *rootOptions) *cobra.Command {
 				return fmt.Errorf("get domain status: %w", err)
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Domain: %s\nTunnel: %s\nStatus: %s\n", result.Hostname, result.TunnelID, result.Status)
+			return err
+		}},
+		&cobra.Command{Use: "delete <hostname>", Aliases: []string{"rm"}, Short: "Delete a custom domain", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := executeDomainRequest(o, http.MethodDelete, "/api/v1/domains/"+url.PathEscape(args[0]), nil)
+			if err != nil {
+				return fmt.Errorf("delete domain: %w", err)
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Deleted custom domain %s.\n", result.Hostname)
 			return err
 		}},
 	)

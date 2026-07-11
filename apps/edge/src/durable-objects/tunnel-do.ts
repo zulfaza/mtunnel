@@ -28,6 +28,9 @@ interface Attachment {
   readonly publicOrigin: string;
   readonly devRouting: boolean;
   readonly handshakeComplete: boolean;
+  readonly organizationId: string;
+  readonly connectionId: string;
+  readonly lifetimeSeconds: number;
 }
 
 interface PersistedMetadata {
@@ -89,7 +92,10 @@ function isAttachment(value: unknown): value is Attachment {
     typeof record.tunnelId === "string" &&
     typeof record.publicOrigin === "string" &&
     typeof record.devRouting === "boolean" &&
-    typeof record.handshakeComplete === "boolean"
+    typeof record.handshakeComplete === "boolean" &&
+    typeof record.organizationId === "string" &&
+    typeof record.connectionId === "string" &&
+    typeof record.lifetimeSeconds === "number"
   );
 }
 
@@ -160,7 +166,18 @@ export class TunnelDO extends DurableObject<Env> {
     }
     const tunnelId = request.headers.get("x-mtunnel-id");
     const publicOrigin = request.headers.get("x-mtunnel-public-origin");
-    if (tunnelId === null || publicOrigin === null) return jsonError(400, "bad_request");
+    const organizationId = request.headers.get("x-mtunnel-organization-id");
+    const connectionId = request.headers.get("x-mtunnel-connection-id");
+    const lifetimeSeconds = Number(request.headers.get("x-mtunnel-lifetime-seconds"));
+    if (
+      tunnelId === null ||
+      publicOrigin === null ||
+      organizationId === null ||
+      connectionId === null ||
+      !Number.isSafeInteger(lifetimeSeconds) ||
+      lifetimeSeconds < 0
+    )
+      return jsonError(400, "bad_request");
     for (const existing of this.ctx.getWebSockets()) existing.close(4001, "replaced");
     const pair = new WebSocketPair();
     const client = pair[0];
@@ -171,6 +188,9 @@ export class TunnelDO extends DurableObject<Env> {
       publicOrigin,
       devRouting: request.headers.get("x-mtunnel-dev-routing") === "true",
       handshakeComplete: false,
+      organizationId,
+      connectionId,
+      lifetimeSeconds,
     } satisfies Attachment);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -530,6 +550,11 @@ export class TunnelDO extends DurableObject<Env> {
       maxPayloadBytes: MAX_FRAME_PAYLOAD_BYTES,
     });
     ws.serializeAttachment({ ...attachment, handshakeComplete: true } satisfies Attachment);
+    if (attachment.lifetimeSeconds > 0) {
+      await this.ctx.storage.setAlarm(now + attachment.lifetimeSeconds * 1000);
+    } else {
+      await this.ctx.storage.deleteAlarm();
+    }
     await this.ctx.storage.put("metadata", {
       tunnelId,
       connectedAt: now,
@@ -538,13 +563,26 @@ export class TunnelDO extends DurableObject<Env> {
     } satisfies PersistedMetadata);
   }
 
-  override webSocketClose(
-    _ws: WebSocket,
+  override async webSocketClose(
+    ws: WebSocket,
     _code: number,
     _reason: string,
     _wasClean: boolean,
-  ): void {
+  ): Promise<void> {
+    const attachment = this.attachment(ws);
+    if (attachment !== null) {
+      await this.env.REGISTRY.getByName("global").releaseConnection(
+        attachment.tunnelId,
+        attachment.organizationId,
+        attachment.connectionId,
+      );
+    }
     this.failAll("upstream_error");
+  }
+
+  override async alarm(): Promise<void> {
+    for (const socket of this.ctx.getWebSockets())
+      socket.close(4003, "free tunnel lifetime reached");
   }
 
   override webSocketError(_ws: WebSocket, error: unknown): void {

@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import {
   decodeMessage,
   encodeMessage,
@@ -56,6 +56,21 @@ async function tokenFor(tunnelId: string): Promise<string> {
     throw new Error("token endpoint returned an invalid body");
   }
   return (value as Record<string, string>).token;
+}
+
+async function grantDomainCredit(orderId: string): Promise<void> {
+  const now = Date.now();
+  await env.DOMAINS.batch([
+    env.DOMAINS.prepare(
+      `INSERT INTO billing_orders
+         (id, organization_id, provider, amount_idr, status, created_at, updated_at)
+       VALUES (?, 'development-organization', 'midtrans', 10000, 'paid', ?, ?)`,
+    ).bind(orderId, now, now),
+    env.DOMAINS.prepare(
+      `INSERT INTO billing_domain_credits (order_id, organization_id, created_at)
+       VALUES (?, 'development-organization', ?)`,
+    ).bind(orderId, now),
+  ]);
 }
 
 async function openAgent(tunnelId: string): Promise<FakeAgent> {
@@ -172,6 +187,7 @@ describe("edge Worker routes", () => {
   });
 
   it("creates a pending custom domain with DNS ownership records", async () => {
+    await grantDomainCredit("custom-domain-credit");
     const response = await SELF.fetch("http://worker.test/api/v1/domains", {
       method: "POST",
       headers: { authorization: "Bearer development-token", "content-type": "application/json" },
@@ -190,6 +206,48 @@ describe("edge Worker routes", () => {
     });
     expect(status.status).toBe(200);
     await expect(status.json()).resolves.toMatchObject({ status: "pending_dns" });
+  });
+
+  it("lists, tracks usage, and deletes organization custom domains", async () => {
+    await grantDomainCredit("usage-domain-credit");
+    const hostname = "usage.customer.test";
+    const created = await SELF.fetch("http://worker.test/api/v1/domains", {
+      method: "POST",
+      headers: { authorization: "Bearer development-token", "content-type": "application/json" },
+      body: JSON.stringify({ hostname, tunnelId: "usage-domain-test" }),
+    });
+    expect(created.status).toBe(201);
+    await env.DOMAINS.prepare("UPDATE custom_domains SET status = 'active' WHERE hostname = ?")
+      .bind(hostname)
+      .run();
+
+    await SELF.fetch(`http://${hostname}/hello`);
+    const listed = await SELF.fetch("http://worker.test/api/v1/domains", {
+      headers: { authorization: "Bearer development-token" },
+    });
+    expect(listed.status).toBe(200);
+    const listValue = (await listed.json()) as { domains: Array<Record<string, unknown>> };
+    expect(listValue.domains).toContainEqual(
+      expect.objectContaining({
+        hostname,
+        tunnelId: "usage-domain-test",
+        status: "active",
+        lastUsedAt: expect.any(String),
+      }),
+    );
+
+    const deleted = await SELF.fetch(`http://worker.test/api/v1/domains/${hostname}`, {
+      method: "DELETE",
+      headers: { authorization: "Bearer development-token" },
+    });
+    expect(deleted.status).toBe(200);
+    const afterDelete = await SELF.fetch("http://worker.test/api/v1/domains", {
+      headers: { authorization: "Bearer development-token" },
+    });
+    const afterDeleteValue = (await afterDelete.json()) as {
+      domains: Array<{ hostname: string }>;
+    };
+    expect(afterDeleteValue.domains.some((domain) => domain.hostname === hostname)).toBe(false);
   });
 
   it("requires an upgrade and valid token to connect", async () => {

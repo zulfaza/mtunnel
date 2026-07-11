@@ -1,4 +1,5 @@
 import type { Env } from "./env.js";
+import { entitlements } from "./billing.js";
 
 export type DomainStatus = "pending_dns" | "provisioning" | "active" | "failed";
 
@@ -9,6 +10,11 @@ export interface DomainView {
   readonly cname: { readonly type: "CNAME"; readonly name: string; readonly value: string };
   readonly verification: { readonly type: "TXT"; readonly name: string; readonly value: string };
   readonly error?: string;
+  readonly lastUsedAt: string | null;
+}
+
+export interface DomainListView {
+  readonly domains: readonly DomainView[];
 }
 
 export type DomainResult =
@@ -29,6 +35,7 @@ interface DomainRecord {
   readonly status: DomainStatus;
   readonly cloudflareHostnameId: string | null;
   readonly error: string | null;
+  readonly lastUsedAt: number | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -50,7 +57,8 @@ function parseDomainRecord(value: unknown): DomainRecord | null {
     typeof value.verification_token !== "string" ||
     !isDomainStatus(value.status) ||
     (value.cloudflare_hostname_id !== null && typeof value.cloudflare_hostname_id !== "string") ||
-    (value.error !== null && typeof value.error !== "string")
+    (value.error !== null && typeof value.error !== "string") ||
+    (value.last_used_at !== null && typeof value.last_used_at !== "number")
   )
     return null;
   return {
@@ -61,6 +69,7 @@ function parseDomainRecord(value: unknown): DomainRecord | null {
     status: value.status,
     cloudflareHostnameId: value.cloudflare_hostname_id,
     error: value.error,
+    lastUsedAt: value.last_used_at,
   };
 }
 
@@ -83,6 +92,7 @@ function view(record: DomainRecord, tunnelDomain: string): DomainView {
       name: verificationName(record.hostname),
       value: verificationValue(record.verificationToken),
     },
+    lastUsedAt: record.lastUsedAt === null ? null : new Date(record.lastUsedAt).toISOString(),
   };
   return record.error === null ? result : { ...result, error: record.error };
 }
@@ -97,7 +107,7 @@ function randomToken(): string {
 async function findDomain(env: Env, hostname: string): Promise<DomainRecord | null> {
   const value: unknown = await env.DOMAINS.prepare(
     `SELECT hostname, tunnel_id, organization_id, verification_token, status,
-            cloudflare_hostname_id, error
+            cloudflare_hostname_id, error, last_used_at
        FROM custom_domains WHERE hostname = ?`,
   )
     .bind(hostname)
@@ -129,9 +139,25 @@ export async function addDomain(
     readonly userId: string;
   },
 ): Promise<DomainResult> {
-  const claimed = await env.REGISTRY
-    .getByName("global")
-    .claimTunnel(input.tunnelId, input.organizationId, input.userId);
+  const limits = await entitlements(env, input.organizationId);
+  const current = await env.DOMAINS.prepare(
+    "SELECT COUNT(*) AS count FROM custom_domains WHERE organization_id = ?",
+  )
+    .bind(input.organizationId)
+    .first<{ count: number }>();
+  const existing = await findDomain(env, input.hostname);
+  if (existing === null && (current?.count ?? 0) >= limits.customDomainLimit)
+    return {
+      ok: false,
+      status: 409,
+      error: "custom_domain_limit_reached",
+      message: "Purchase a QRIS domain credit or subscribe to Premium to add this domain",
+    };
+  const claimed = await env.REGISTRY.getByName("global").claimTunnel(
+    input.tunnelId,
+    input.organizationId,
+    input.userId,
+  );
   if (!claimed) return { ok: false, status: 409, error: "domain_or_tunnel_taken" };
   await env.DOMAINS.prepare(
     `UPDATE custom_domains SET organization_id = ?, updated_at = ?
@@ -348,6 +374,82 @@ export async function domainStatus(
     return { ok: true, domain: view(record, env.TUNNEL_DOMAIN) };
   const saved = await saveProvisioningResult(env, record, provisioned.id, "active");
   return { ok: true, domain: view(saved, env.TUNNEL_DOMAIN) };
+}
+
+export async function listDomains(
+  env: Env,
+  organizationId: string,
+  userId: string,
+): Promise<DomainListView> {
+  await env.DOMAINS.prepare(
+    `UPDATE custom_domains SET organization_id = ?, updated_at = ?
+      WHERE organization_id = ?`,
+  )
+    .bind(organizationId, Date.now(), userId)
+    .run();
+  const result = await env.DOMAINS.prepare(
+    `SELECT hostname, tunnel_id, organization_id, verification_token, status,
+            cloudflare_hostname_id, error, last_used_at
+       FROM custom_domains
+      WHERE organization_id = ?
+      ORDER BY created_at DESC`,
+  )
+    .bind(organizationId)
+    .all();
+  return {
+    domains: result.results.flatMap((value): readonly DomainView[] => {
+      const record = parseDomainRecord(value);
+      return record === null ? [] : [view(record, env.TUNNEL_DOMAIN)];
+    }),
+  };
+}
+
+export async function deleteDomain(
+  env: Env,
+  hostname: string,
+  organizationId: string,
+  userId: string,
+): Promise<DomainResult | null> {
+  const record = await migrateLegacyDomain(
+    env,
+    await findDomain(env, hostname),
+    organizationId,
+    userId,
+  );
+  if (record === null || record.organizationId !== organizationId) return null;
+  if (record.cloudflareHostnameId !== null) {
+    if (env.CLOUDFLARE_API_TOKEN === undefined || env.CLOUDFLARE_ZONE_ID === undefined)
+      return { ok: false, status: 503, error: "custom_domains_not_configured" };
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/zones/${env.CLOUDFLARE_ZONE_ID}/custom_hostnames/${record.cloudflareHostnameId}`,
+      {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` },
+      },
+    );
+    if (!response.ok && response.status !== 404) {
+      return {
+        ok: false,
+        status: 502,
+        error: "custom_domain_delete_failed",
+        message: cloudflareFailure(await response.json().catch((): null => null), response.status),
+      };
+    }
+  }
+  await env.DOMAINS.prepare("DELETE FROM custom_domains WHERE hostname = ? AND organization_id = ?")
+    .bind(hostname, organizationId)
+    .run();
+  return { ok: true, domain: view(record, env.TUNNEL_DOMAIN) };
+}
+
+export async function markDomainUsed(env: Env, hostname: string): Promise<void> {
+  const now = Date.now();
+  await env.DOMAINS.prepare(
+    `UPDATE custom_domains SET last_used_at = ?, updated_at = ?
+      WHERE hostname = ? AND (last_used_at IS NULL OR last_used_at < ?)`,
+  )
+    .bind(now, now, hostname, now - 60_000)
+    .run();
 }
 
 export async function tunnelIdForDomain(env: Env, hostname: string): Promise<string | null> {

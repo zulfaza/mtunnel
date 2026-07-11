@@ -1,10 +1,21 @@
 import { mintAgentToken, verifyAgentToken } from "./auth/index.js";
+import {
+  createQrisCharge,
+  createStripeCheckout,
+  createStripePortal,
+  entitlements,
+  handleMidtransWebhook,
+  handleStripeWebhook,
+} from "./billing.js";
 import { authenticateUser, workosForm } from "./auth/workos.js";
 import { RegistryDO } from "./durable-objects/registry-do.js";
 import { TunnelDO } from "./durable-objects/tunnel-do.js";
 import {
   addDomain,
+  deleteDomain,
   domainStatus,
+  listDomains,
+  markDomainUsed,
   tunnelIdForDomain,
   verifyDomain,
   type DomainResult,
@@ -43,7 +54,10 @@ function validTokenBody(
 async function handleToken(request: Request, env: Env): Promise<Response> {
   const auth = await authenticateUser(request, env);
   if (!auth.ok)
-    return jsonError(auth.status, auth.status === 401 ? "unauthorized" : "organization_unavailable");
+    return jsonError(
+      auth.status,
+      auth.status === 401 ? "unauthorized" : "organization_unavailable",
+    );
   let body: unknown;
   try {
     body = await request.json();
@@ -52,9 +66,11 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
   }
   const input = validTokenBody(body);
   if (input === null) return jsonError(400, "bad_request");
-  const claimed = await env.REGISTRY
-    .getByName("global")
-    .claimTunnel(input.tunnelId, auth.organizationId, auth.userId);
+  const claimed = await env.REGISTRY.getByName("global").claimTunnel(
+    input.tunnelId,
+    auth.organizationId,
+    auth.userId,
+  );
   if (!claimed) return jsonError(409, "tunnel_name_taken");
   if (env.AUTH_SECRET === undefined) return jsonError(500, "server_misconfigured");
   const minted = await mintAgentToken(env.AUTH_SECRET, input.tunnelId, auth.userId);
@@ -62,6 +78,79 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
     token: minted.token,
     tunnelId: input.tunnelId,
     expiresAt: minted.claims.exp,
+  });
+}
+
+async function handleBillingCheckout(
+  request: Request,
+  env: Env,
+  provider: "qris" | "stripe",
+): Promise<Response> {
+  const auth = await authenticateUser(request, env);
+  if (!auth.ok)
+    return jsonError(
+      auth.status,
+      auth.status === 401 ? "unauthorized" : "organization_unavailable",
+    );
+  try {
+    if (provider === "stripe") {
+      const url = new URL(request.url);
+      return jsonResponse(
+        await createStripeCheckout(env, auth.organizationId, `${url.protocol}//${url.host}`),
+        201,
+      );
+    }
+    let amount = 10_000;
+    const body: unknown = await request.json().catch(() => ({}));
+    if (isRecord(body) && body.amountIdr !== undefined) {
+      if (typeof body.amountIdr !== "number") return jsonError(400, "bad_request");
+      amount = body.amountIdr;
+    }
+    return jsonResponse(await createQrisCharge(env, auth.organizationId, amount), 201);
+  } catch (error) {
+    if (error instanceof RangeError) return jsonError(400, "amount_below_minimum", error.message);
+    return jsonError(
+      503,
+      "billing_provider_unavailable",
+      error instanceof Error ? error.message : undefined,
+    );
+  }
+}
+
+async function handleBillingPortal(request: Request, env: Env): Promise<Response> {
+  const auth = await authenticateUser(request, env);
+  if (!auth.ok)
+    return jsonError(
+      auth.status,
+      auth.status === 401 ? "unauthorized" : "organization_unavailable",
+    );
+  const url = new URL(request.url);
+  try {
+    return jsonResponse(
+      await createStripePortal(env, auth.organizationId, `${url.protocol}//${url.host}`),
+      201,
+    );
+  } catch (error) {
+    if (error instanceof RangeError)
+      return jsonError(409, "stripe_customer_missing", error.message);
+    return jsonError(
+      503,
+      "billing_provider_unavailable",
+      error instanceof Error ? error.message : undefined,
+    );
+  }
+}
+
+async function handleBillingStatus(request: Request, env: Env): Promise<Response> {
+  const auth = await authenticateUser(request, env);
+  if (!auth.ok)
+    return jsonError(
+      auth.status,
+      auth.status === 401 ? "unauthorized" : "organization_unavailable",
+    );
+  return jsonResponse({
+    organizationId: auth.organizationId,
+    ...(await entitlements(env, auth.organizationId)),
   });
 }
 
@@ -124,7 +213,10 @@ function domainResponse(result: DomainResult): Response {
 async function handleDomainAdd(request: Request, env: Env): Promise<Response> {
   const auth = await authenticateUser(request, env);
   if (!auth.ok)
-    return jsonError(auth.status, auth.status === 401 ? "unauthorized" : "organization_unavailable");
+    return jsonError(
+      auth.status,
+      auth.status === 401 ? "unauthorized" : "organization_unavailable",
+    );
   let value: unknown;
   try {
     value = await request.json();
@@ -158,6 +250,38 @@ async function handleDomainAdd(request: Request, env: Env): Promise<Response> {
   );
 }
 
+async function handleDomainList(request: Request, env: Env): Promise<Response> {
+  const auth = await authenticateUser(request, env);
+  if (!auth.ok)
+    return jsonError(
+      auth.status,
+      auth.status === 401 ? "unauthorized" : "organization_unavailable",
+    );
+  return jsonResponse(await listDomains(env, auth.organizationId, auth.userId));
+}
+
+async function handleDomainDelete(
+  request: Request,
+  env: Env,
+  hostnameValue: string,
+): Promise<Response> {
+  const auth = await authenticateUser(request, env);
+  if (!auth.ok)
+    return jsonError(
+      auth.status,
+      auth.status === 401 ? "unauthorized" : "organization_unavailable",
+    );
+  const hostname = hostnameValue.trim().toLowerCase();
+  if (
+    !validHostname(hostname) ||
+    hostname === env.TUNNEL_DOMAIN ||
+    hostname.endsWith(`.${env.TUNNEL_DOMAIN}`)
+  )
+    return jsonError(400, "bad_request");
+  const result = await deleteDomain(env, hostname, auth.organizationId, auth.userId);
+  return result === null ? jsonError(404, "not_found") : domainResponse(result);
+}
+
 async function handleDomainAction(
   request: Request,
   env: Env,
@@ -166,7 +290,10 @@ async function handleDomainAction(
 ): Promise<Response> {
   const auth = await authenticateUser(request, env);
   if (!auth.ok)
-    return jsonError(auth.status, auth.status === 401 ? "unauthorized" : "organization_unavailable");
+    return jsonError(
+      auth.status,
+      auth.status === 401 ? "unauthorized" : "organization_unavailable",
+    );
   const hostname = hostnameValue.trim().toLowerCase();
   if (
     !validHostname(hostname) ||
@@ -193,6 +320,16 @@ function domainAction(
     return null;
   }
   return match[2] === "verify" || match[2] === "status" ? { hostname, action: match[2] } : null;
+}
+
+function domainHostname(pathname: string): string | null {
+  const match = /^\/api\/v1\/domains\/([^/]+)$/u.exec(pathname);
+  if (match?.[1] === undefined) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
 }
 
 function publicOrigin(url: URL): string {
@@ -223,13 +360,37 @@ async function forwardConnect(
   if (env.AUTH_SECRET === undefined) return jsonError(500, "server_misconfigured");
   const verified = await verifyAgentToken(token, env.AUTH_SECRET, tunnelId);
   if (!verified.ok) return jsonError(401, "unauthorized", "invalid token");
+  const registry = env.REGISTRY.getByName("global");
+  const organizationId = await registry.organizationForTunnel(tunnelId);
+  if (organizationId === null) return jsonError(404, "not_found");
+  const limits = await entitlements(env, organizationId);
+  const connectionId = crypto.randomUUID();
+  if (
+    !(await registry.acquireConnection(tunnelId, organizationId, connectionId, limits.tunnelLimit))
+  )
+    return jsonError(429, "tunnel_limit_reached");
   const headers = stripInternalHeaders(request.headers);
   headers.delete("authorization");
   headers.set("x-mtunnel-op", "connect");
   headers.set("x-mtunnel-id", tunnelId);
   headers.set("x-mtunnel-public-origin", publicOrigin(url));
   headers.set("x-mtunnel-dev-routing", env.DEV_ROUTING === "true" ? "true" : "false");
-  return env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
+  headers.set("x-mtunnel-organization-id", organizationId);
+  headers.set("x-mtunnel-connection-id", connectionId);
+  headers.set(
+    "x-mtunnel-lifetime-seconds",
+    limits.tunnelLifetimeSeconds === null ? "0" : String(limits.tunnelLifetimeSeconds),
+  );
+  let response: Response;
+  try {
+    response = await env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
+  } catch (error) {
+    await registry.releaseConnection(tunnelId, organizationId, connectionId);
+    throw error;
+  }
+  if (response.status !== 101)
+    await registry.releaseConnection(tunnelId, organizationId, connectionId);
+  return response;
 }
 
 async function forwardProxy(
@@ -247,7 +408,7 @@ async function forwardProxy(
   return env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
 }
 
-async function fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const hostname = url.hostname.toLowerCase();
   const isPrimaryHost = hostname === env.TUNNEL_DOMAIN.toLowerCase();
@@ -268,8 +429,29 @@ async function fetch(request: Request, env: Env, _ctx: ExecutionContext): Promis
     return proxyWorkosAuth(request, env, "refresh");
   if (request.method === "POST" && url.pathname === "/api/v1/auth/token")
     return handleToken(request, env);
+  if (request.method === "POST" && url.pathname === "/api/v1/billing/qris")
+    return handleBillingCheckout(request, env, "qris");
+  if (request.method === "POST" && url.pathname === "/api/v1/billing/stripe")
+    return handleBillingCheckout(request, env, "stripe");
+  if (request.method === "POST" && url.pathname === "/api/v1/billing/portal")
+    return handleBillingPortal(request, env);
+  if (request.method === "GET" && url.pathname === "/api/v1/billing/status")
+    return handleBillingStatus(request, env);
+  if (request.method === "POST" && url.pathname === "/api/v1/webhooks/midtrans")
+    return (await handleMidtransWebhook(request, env))
+      ? jsonResponse({ received: true })
+      : jsonError(400, "invalid_webhook");
+  if (request.method === "POST" && url.pathname === "/api/v1/webhooks/stripe")
+    return (await handleStripeWebhook(request, env))
+      ? jsonResponse({ received: true })
+      : jsonError(400, "invalid_webhook");
   if (request.method === "POST" && url.pathname === "/api/v1/domains")
     return handleDomainAdd(request, env);
+  if (request.method === "GET" && url.pathname === "/api/v1/domains")
+    return handleDomainList(request, env);
+  const requestedDomainHostname = domainHostname(url.pathname);
+  if (request.method === "DELETE" && requestedDomainHostname !== null)
+    return handleDomainDelete(request, env, requestedDomainHostname);
   const requestedDomainAction = domainAction(url.pathname);
   if (
     requestedDomainAction !== null &&
@@ -300,9 +482,11 @@ async function fetch(request: Request, env: Env, _ctx: ExecutionContext): Promis
     const tunnelId = status[1];
     if (tunnelId === undefined || !isValidTunnelId(tunnelId)) return jsonError(400, "bad_request");
     if (
-      !(await env.REGISTRY
-        .getByName("global")
-        .ownsTunnel(tunnelId, auth.organizationId, auth.userId))
+      !(await env.REGISTRY.getByName("global").ownsTunnel(
+        tunnelId,
+        auth.organizationId,
+        auth.userId,
+      ))
     )
       return jsonError(404, "not_found");
     return jsonResponse(await env.TUNNELS.getByName(tunnelId).status(tunnelId));
@@ -311,7 +495,10 @@ async function fetch(request: Request, env: Env, _ctx: ExecutionContext): Promis
   const hostTunnelId = tunnelIdFromHost(request.headers.get("host"), env.TUNNEL_DOMAIN);
   if (hostTunnelId !== null) return forwardProxy(request, env, hostTunnelId, url);
   const customTunnelId = await tunnelIdForDomain(env, hostname);
-  if (customTunnelId !== null) return forwardProxy(request, env, customTunnelId, url);
+  if (customTunnelId !== null) {
+    ctx.waitUntil(markDomainUsed(env, hostname));
+    return forwardProxy(request, env, customTunnelId, url);
+  }
   if (env.DEV_ROUTING === "true") {
     const route = tunnelIdFromDevPath(url.pathname);
     if (route !== null) {

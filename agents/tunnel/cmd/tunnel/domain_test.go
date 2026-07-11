@@ -79,3 +79,45 @@ func TestDecodeDomainResultAcceptsLegacyCNAME(t *testing.T) {
 		t.Fatalf("unexpected verification record: %#v", result.Verification)
 	}
 }
+
+func TestDomainListAndDelete(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/domains":
+			w.Write([]byte(`{"domains":[{"hostname":"app.upsell.is","tunnelId":"upsell","status":"active","lastUsedAt":"2026-07-11T01:02:03Z","cname":{"type":"CNAME","name":"app.upsell.is","value":"makarima.xyz"},"verification":{"type":"TXT","name":"_mtunnel.app.upsell.is","value":"mtunnel-verification=test"}}]}`))
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/v1/domains/app.upsell.is":
+			w.Write([]byte(`{"hostname":"app.upsell.is","tunnelId":"upsell","status":"active","lastUsedAt":"2026-07-11T01:02:03Z","cname":{"type":"CNAME","name":"app.upsell.is","value":"makarima.xyz"},"verification":{"type":"TXT","name":"_mtunnel.app.upsell.is","value":"mtunnel-verification=test"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := config.Save(configPath, config.Config{Server: server.URL, AccessToken: "access"}); err != nil {
+		t.Fatal(err)
+	}
+	o := rootOptions{config: configPath}
+	cmd := newDomainCmd(&o)
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"list"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(output.Bytes(), []byte("app.upsell.is")) || !bytes.Contains(output.Bytes(), []byte("active")) || !bytes.Contains(output.Bytes(), []byte("2026-07-11")) {
+		t.Fatalf("unexpected list output: %q", output.String())
+	}
+
+	output.Reset()
+	cmd = newDomainCmd(&o)
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"delete", "app.upsell.is"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "Deleted custom domain app.upsell.is.\n" {
+		t.Fatalf("unexpected delete output: %q", output.String())
+	}
+}

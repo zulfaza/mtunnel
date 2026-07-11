@@ -9,6 +9,58 @@ interface DomainRecord {
 }
 
 export class RegistryDO extends DurableObject<Env> {
+  async organizationForTunnel(tunnelId: string): Promise<string | null> {
+    return (await this.ctx.storage.get<string>(`tunnel:${tunnelId}`)) ?? null;
+  }
+
+  async acquireConnection(
+    tunnelId: string,
+    organizationId: string,
+    connectionId: string,
+    maximum: number | null,
+  ): Promise<boolean> {
+    const key = `connections:${organizationId}`;
+    const connections = (await this.ctx.storage.get<Record<string, string>>(key)) ?? {};
+    if (
+      !(tunnelId in connections) &&
+      maximum !== null &&
+      Object.keys(connections).length >= maximum
+    ) {
+      // Durable Object/WebSocket failures can prevent the close callback. Reconcile
+      // only at the limit, keeping the common connect path to one storage operation.
+      const statuses = await Promise.all(
+        Object.keys(connections).map(async (connectedTunnelId) => ({
+          connectedTunnelId,
+          status: await this.env.TUNNELS.getByName(connectedTunnelId).status(connectedTunnelId),
+        })),
+      );
+      for (const { connectedTunnelId, status } of statuses) {
+        if (!status.connected) delete connections[connectedTunnelId];
+      }
+    }
+    if (
+      !(tunnelId in connections) &&
+      maximum !== null &&
+      Object.keys(connections).length >= maximum
+    )
+      return false;
+    await this.ctx.storage.put(key, { ...connections, [tunnelId]: connectionId });
+    return true;
+  }
+
+  async releaseConnection(
+    tunnelId: string,
+    organizationId: string,
+    connectionId: string,
+  ): Promise<void> {
+    const key = `connections:${organizationId}`;
+    const connections = (await this.ctx.storage.get<Record<string, string>>(key)) ?? {};
+    if (connections[tunnelId] !== connectionId) return;
+    delete connections[tunnelId];
+    if (Object.keys(connections).length === 0) await this.ctx.storage.delete(key);
+    else await this.ctx.storage.put(key, connections);
+  }
+
   async claimTunnel(
     tunnelId: string,
     organizationId: string,
