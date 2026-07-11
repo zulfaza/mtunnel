@@ -36,3 +36,33 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		t.Fatalf("mode = %o, want 600", got)
 	}
 }
+
+func TestLoadProjectSearchesParentDirectories(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ProjectFilename)
+	contents := []byte(`{"tunnels":{"api":{"port":3000,"hostname":"127.0.0.1"}}}`)
+	if err := os.WriteFile(path, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(root, "services", "api")
+	if err := os.MkdirAll(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectConfig, gotPath, err := LoadProject(nested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != path {
+		t.Fatalf("path = %q, want %q", gotPath, path)
+	}
+	if got := projectConfig.Tunnels["api"]; got.Port != 3000 || got.Hostname != "127.0.0.1" {
+		t.Fatalf("tunnel = %#v", got)
+	}
+}
+
+func TestLoadProjectMissingFilePreservesNotExist(t *testing.T) {
+	_, _, err := LoadProject(t.TempDir())
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("LoadProject() error = %v, want fs.ErrNotExist", err)
+	}
+}

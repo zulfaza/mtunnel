@@ -3,16 +3,29 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
+
+const ProjectFilename = "mtunnel.config.json"
 
 type Config struct {
 	Server       string `json:"server"`
 	AccessToken  string `json:"accessToken"`
 	RefreshToken string `json:"refreshToken,omitempty"`
 	Secret       string `json:"secret,omitempty"` // Legacy development config.
+}
+
+type ProjectConfig struct {
+	Tunnels map[string]Tunnel `json:"tunnels"`
+}
+
+type Tunnel struct {
+	Port     int    `json:"port"`
+	Hostname string `json:"hostname,omitempty"`
 }
 
 func DefaultPath() string {
@@ -33,6 +46,32 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
 	return cfg, nil
+}
+
+func LoadProject(startDirectory string) (ProjectConfig, string, error) {
+	directory, err := filepath.Abs(startDirectory)
+	if err != nil {
+		return ProjectConfig{}, "", fmt.Errorf("resolve project config directory: %w", err)
+	}
+	for {
+		path := filepath.Join(directory, ProjectFilename)
+		contents, err := os.ReadFile(path)
+		if err == nil {
+			var projectConfig ProjectConfig
+			if err := json.Unmarshal(contents, &projectConfig); err != nil {
+				return ProjectConfig{}, path, fmt.Errorf("decode project config %s: %w", path, err)
+			}
+			return projectConfig, path, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return ProjectConfig{}, path, fmt.Errorf("read project config %s: %w", path, err)
+		}
+		parent := filepath.Dir(directory)
+		if parent == directory {
+			return ProjectConfig{}, "", fs.ErrNotExist
+		}
+		directory = parent
+	}
 }
 
 func Save(path string, cfg Config) error {

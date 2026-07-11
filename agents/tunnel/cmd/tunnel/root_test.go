@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,6 +20,47 @@ func TestDefaultHostnameUsesLocalhost(t *testing.T) {
 	}
 	if flag.DefValue != "localhost" {
 		t.Fatalf("hostname default = %q, want localhost", flag.DefValue)
+	}
+}
+
+func TestResolveHTTPConfiguredTunnel(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, config.ProjectFilename), []byte(`{"tunnels":{"api":{"port":3000,"hostname":"127.0.0.1"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previousDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(directory); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previousDirectory) })
+	port, name, hostname, err := resolveHTTPTarget("api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != 3000 || name != "api" || hostname != "127.0.0.1" {
+		t.Fatalf("resolved target = (%d, %q, %q)", port, name, hostname)
+	}
+}
+
+func TestResolveHTTPInvalidNumericPortDoesNotUseProjectConfig(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, config.ProjectFilename), []byte(`{"tunnels":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previousDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(directory); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previousDirectory) })
+	_, _, _, err = resolveHTTPTarget("70000")
+	if err == nil || !strings.Contains(err.Error(), "valid TCP port") {
+		t.Fatalf("resolveHTTPTarget() error = %v", err)
 	}
 }
 

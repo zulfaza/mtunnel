@@ -93,6 +93,26 @@ Then open or inspect a named tunnel:
 ./agents/tunnel/bin/mt version
 ```
 
+For project tunnels, create `mtunnel.config.json` in the current directory or
+one of its parents:
+
+```json
+{
+  "tunnels": {
+    "api": { "port": 3000 },
+    "admin": { "port": 5173, "hostname": "127.0.0.1" }
+  }
+}
+```
+
+The tunnel name selects both the local target and the public tunnel name:
+
+```sh
+mt http api
+```
+
+Explicit `--name` and `--hostname` flags override their configured values.
+
 Common flags are `--server`, `--token`, `--config`, `--hostname`, `--name`,
 `--request-timeout`, and `--log-level`. Command-line secrets can be visible in
 the local process list; prefer `mt login` for routine use.

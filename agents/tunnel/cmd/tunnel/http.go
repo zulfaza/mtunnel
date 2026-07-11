@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
+	"io/fs"
 	"math/big"
 	"os"
 	"os/signal"
@@ -19,8 +21,8 @@ import (
 )
 
 func newHTTPCmd(o *rootOptions) *cobra.Command {
-	return &cobra.Command{Use: "http <port>", Short: "Open an HTTP tunnel", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		port, err := parsePort(args[0])
+	return &cobra.Command{Use: "http <port|name>", Short: "Open an HTTP tunnel", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		port, tunnelName, configuredHostname, err := resolveHTTPTarget(args[0])
 		if err != nil {
 			return err
 		}
@@ -37,7 +39,14 @@ func newHTTPCmd(o *rootOptions) *cobra.Command {
 		}
 		name := o.name
 		if name == "" {
-			name = randomName(8)
+			name = tunnelName
+			if name == "" {
+				name = randomName(8)
+			}
+		}
+		hostname := o.hostname
+		if !cmd.Flags().Changed("hostname") && configuredHostname != "" {
+			hostname = configuredHostname
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -58,9 +67,9 @@ func newHTTPCmd(o *rootOptions) *cobra.Command {
 		first := true
 		err = agent.Run(ctx, agent.Options{Server: cfg.Server, Secret: accessToken, RefreshToken: cfg.RefreshToken, OnCredentials: func(credentials auth.Credentials) error {
 			return config.Save(o.config, config.Config{Server: cfg.Server, AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken})
-		}, TunnelID: name, Hostname: o.hostname, Port: port, RequestTimeout: o.requestTimeout, IdleTimeout: o.idleTimeout, Logger: o.logger, OnConnected: func(ack protocol.HelloAck, reconnected bool) {
+		}, TunnelID: name, Hostname: hostname, Port: port, RequestTimeout: o.requestTimeout, IdleTimeout: o.idleTimeout, Logger: o.logger, OnConnected: func(ack protocol.HelloAck, reconnected bool) {
 			if first && !reconnected {
-				fmt.Fprintf(cmd.OutOrStdout(), "Tunnel connected\n\nPublic URL:\n%s\n\nForwarding:\nhttp://%s:%d\n", ack.PublicURL, o.hostname, port)
+				fmt.Fprintf(cmd.OutOrStdout(), "Tunnel connected\n\nPublic URL:\n%s\n\nForwarding:\nhttp://%s:%d\n", ack.PublicURL, hostname, port)
 				first = false
 			}
 		}})
@@ -71,6 +80,35 @@ func newHTTPCmd(o *rootOptions) *cobra.Command {
 		}
 		return err
 	}}
+}
+
+func resolveHTTPTarget(value string) (int, string, string, error) {
+	port, err := parsePort(value)
+	if err == nil {
+		return port, "", "", nil
+	}
+	if _, conversionError := strconv.Atoi(value); conversionError == nil {
+		return 0, "", "", err
+	}
+	workingDirectory, workingDirectoryError := os.Getwd()
+	if workingDirectoryError != nil {
+		return 0, "", "", fmt.Errorf("get working directory: %w", workingDirectoryError)
+	}
+	projectConfig, path, loadError := config.LoadProject(workingDirectory)
+	if loadError != nil {
+		if errors.Is(loadError, fs.ErrNotExist) {
+			return 0, "", "", err
+		}
+		return 0, "", "", loadError
+	}
+	tunnel, exists := projectConfig.Tunnels[value]
+	if !exists {
+		return 0, "", "", fmt.Errorf("tunnel %q not found in %s", value, path)
+	}
+	if _, err := parsePort(strconv.Itoa(tunnel.Port)); err != nil {
+		return 0, "", "", fmt.Errorf("tunnel %q in %s has invalid port %d", value, path, tunnel.Port)
+	}
+	return tunnel.Port, value, tunnel.Hostname, nil
 }
 
 func parsePort(value string) (int, error) {
