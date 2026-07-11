@@ -136,9 +136,19 @@ export async function addDomain(
     readonly tunnelId: string;
     readonly organizationId: string;
     readonly userId: string;
+    readonly maximumDomains: number | null;
   },
 ): Promise<DomainResult> {
   const existing = await findDomain(env, input.hostname);
+  if (existing === null && input.maximumDomains !== null) {
+    const count = await env.DOMAINS.prepare(
+      "SELECT COUNT(*) AS total FROM custom_domains WHERE organization_id = ?",
+    )
+      .bind(input.organizationId)
+      .first<{ total: number }>();
+    if ((count?.total ?? 0) >= input.maximumDomains)
+      return { ok: false, status: 409, error: "custom_domain_limit_reached" };
+  }
   const claimed = await env.REGISTRY.getByName("global").claimTunnel(
     input.tunnelId,
     input.organizationId,
@@ -155,12 +165,27 @@ export async function addDomain(
   const inserted = await env.DOMAINS.prepare(
     `INSERT INTO custom_domains
        (hostname, tunnel_id, organization_id, verification_token, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'pending_dns', ?, ?)
+     SELECT ?, ?, ?, ?, 'pending_dns', ?, ?
+      WHERE ? IS NULL OR (
+        SELECT COUNT(*) FROM custom_domains WHERE organization_id = ?
+      ) < ?
      ON CONFLICT(hostname) DO NOTHING`,
   )
-    .bind(input.hostname, input.tunnelId, input.organizationId, randomToken(), now, now)
+    .bind(
+      input.hostname,
+      input.tunnelId,
+      input.organizationId,
+      randomToken(),
+      now,
+      now,
+      input.maximumDomains,
+      input.organizationId,
+      input.maximumDomains,
+    )
     .run();
   const record = await findDomain(env, input.hostname);
+  if (record === null && inserted.meta.changes === 0)
+    return { ok: false, status: 409, error: "custom_domain_limit_reached" };
   if (record === null) return { ok: false, status: 502, error: "domain_storage_failed" };
   if (record.organizationId !== input.organizationId || record.tunnelId !== input.tunnelId)
     return { ok: false, status: 409, error: "domain_or_tunnel_taken" };

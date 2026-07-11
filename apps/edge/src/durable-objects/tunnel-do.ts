@@ -31,6 +31,9 @@ interface Attachment {
   readonly organizationId: string;
   readonly connectionId: string;
   readonly lifetimeSeconds: number;
+  readonly idleSeconds: number;
+  readonly expiresAt: number;
+  readonly idleAt: number;
 }
 
 interface PersistedMetadata {
@@ -95,7 +98,10 @@ function isAttachment(value: unknown): value is Attachment {
     typeof record.handshakeComplete === "boolean" &&
     typeof record.organizationId === "string" &&
     typeof record.connectionId === "string" &&
-    typeof record.lifetimeSeconds === "number"
+    typeof record.lifetimeSeconds === "number" &&
+    typeof record.idleSeconds === "number" &&
+    typeof record.expiresAt === "number" &&
+    typeof record.idleAt === "number"
   );
 }
 
@@ -169,13 +175,16 @@ export class TunnelDO extends DurableObject<Env> {
     const organizationId = request.headers.get("x-mtunnel-organization-id");
     const connectionId = request.headers.get("x-mtunnel-connection-id");
     const lifetimeSeconds = Number(request.headers.get("x-mtunnel-lifetime-seconds"));
+    const idleSeconds = Number(request.headers.get("x-mtunnel-idle-seconds"));
     if (
       tunnelId === null ||
       publicOrigin === null ||
       organizationId === null ||
       connectionId === null ||
       !Number.isSafeInteger(lifetimeSeconds) ||
-      lifetimeSeconds < 0
+      lifetimeSeconds < 0 ||
+      !Number.isSafeInteger(idleSeconds) ||
+      idleSeconds < 0
     )
       return jsonError(400, "bad_request");
     for (const existing of this.ctx.getWebSockets()) existing.close(4001, "replaced");
@@ -191,6 +200,9 @@ export class TunnelDO extends DurableObject<Env> {
       organizationId,
       connectionId,
       lifetimeSeconds,
+      idleSeconds,
+      expiresAt: 0,
+      idleAt: 0,
     } satisfies Attachment);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -277,6 +289,7 @@ export class TunnelDO extends DurableObject<Env> {
         );
       return cacheJson(502, "tunnel_offline");
     }
+    await this.recordActivity(socket);
     if (this.pending.size >= this.limits.maxPendingRequests)
       return cacheJson(503, "too_many_requests");
 
@@ -549,12 +562,14 @@ export class TunnelDO extends DurableObject<Env> {
       requestTimeoutMs: this.limits.requestTimeoutMs,
       maxPayloadBytes: MAX_FRAME_PAYLOAD_BYTES,
     });
-    ws.serializeAttachment({ ...attachment, handshakeComplete: true } satisfies Attachment);
-    if (attachment.lifetimeSeconds > 0) {
-      await this.ctx.storage.setAlarm(now + attachment.lifetimeSeconds * 1000);
-    } else {
-      await this.ctx.storage.deleteAlarm();
-    }
+    const activeAttachment = {
+      ...attachment,
+      handshakeComplete: true,
+      expiresAt: attachment.lifetimeSeconds === 0 ? 0 : now + attachment.lifetimeSeconds * 1000,
+      idleAt: attachment.idleSeconds === 0 ? 0 : now + attachment.idleSeconds * 1000,
+    } satisfies Attachment;
+    ws.serializeAttachment(activeAttachment);
+    await this.scheduleAccessAlarm(activeAttachment);
     await this.ctx.storage.put("metadata", {
       tunnelId,
       connectedAt: now,
@@ -581,8 +596,44 @@ export class TunnelDO extends DurableObject<Env> {
   }
 
   override async alarm(): Promise<void> {
-    for (const socket of this.ctx.getWebSockets())
-      socket.close(4003, "free tunnel lifetime reached");
+    const now = Date.now();
+    let nextDeadline = 0;
+    for (const socket of this.ctx.getWebSockets()) {
+      const attachment = this.attachment(socket);
+      if (attachment === null) continue;
+      if (attachment.expiresAt > 0 && attachment.expiresAt <= now)
+        socket.close(4003, "tunnel time limit reached");
+      else if (attachment.idleAt > 0 && attachment.idleAt <= now)
+        socket.close(4003, "tunnel idle limit reached");
+      else {
+        const deadline = this.accessDeadline(attachment);
+        if (deadline > 0 && (nextDeadline === 0 || deadline < nextDeadline))
+          nextDeadline = deadline;
+      }
+    }
+    if (nextDeadline > 0) await this.ctx.storage.setAlarm(nextDeadline);
+  }
+
+  private async recordActivity(ws: WebSocket): Promise<void> {
+    const attachment = this.attachment(ws);
+    if (attachment === null || attachment.idleSeconds === 0) return;
+    const activeAttachment = {
+      ...attachment,
+      idleAt: Date.now() + attachment.idleSeconds * 1000,
+    } satisfies Attachment;
+    ws.serializeAttachment(activeAttachment);
+    await this.scheduleAccessAlarm(activeAttachment);
+  }
+
+  private async scheduleAccessAlarm(attachment: Attachment): Promise<void> {
+    const deadline = this.accessDeadline(attachment);
+    if (deadline === 0) await this.ctx.storage.deleteAlarm();
+    else await this.ctx.storage.setAlarm(deadline);
+  }
+
+  private accessDeadline(attachment: Attachment): number {
+    const deadlines = [attachment.expiresAt, attachment.idleAt].filter((deadline) => deadline > 0);
+    return deadlines.length === 0 ? 0 : Math.min(...deadlines);
   }
 
   override webSocketError(_ws: WebSocket, error: unknown): void {

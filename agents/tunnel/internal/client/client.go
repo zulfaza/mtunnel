@@ -20,6 +20,7 @@ import (
 )
 
 var ErrReplaced = errors.New("tunnel connection replaced by another agent")
+var ErrLimitReached = errors.New("tunnel usage limit reached")
 
 type SendFunc func(protocol.Message) error
 type OpenFunc func(context.Context, protocol.HelloAck, SendFunc) func()
@@ -68,7 +69,7 @@ func Run(ctx context.Context, opts Options) error {
 			}
 		}
 		ack, err := runOnce(ctx, opts)
-		if errors.Is(err, ErrReplaced) {
+		if errors.Is(err, ErrReplaced) || errors.Is(err, ErrLimitReached) {
 			return err
 		}
 		if ctx.Err() != nil {
@@ -275,6 +276,9 @@ func connectURL(server, tunnelID string) (string, error) {
 func closeError(err error) error {
 	if websocket.CloseStatus(err) == 4001 {
 		return ErrReplaced
+	}
+	if websocket.CloseStatus(err) == 4003 {
+		return ErrLimitReached
 	}
 	return err
 }

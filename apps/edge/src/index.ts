@@ -1,4 +1,5 @@
 import { mintAgentToken, verifyAgentToken } from "./auth/index.js";
+import { limitsForOrganization } from "./access.js";
 import { authenticateUser, workosForm } from "./auth/workos.js";
 import { RegistryDO } from "./durable-objects/registry-do.js";
 import { TunnelDO } from "./durable-objects/tunnel-do.js";
@@ -165,6 +166,7 @@ async function handleDomainAdd(request: Request, env: Env): Promise<Response> {
       tunnelId: value.tunnelId,
       organizationId: auth.organizationId,
       userId: auth.userId,
+      maximumDomains: (await limitsForOrganization(env, auth.organizationId)).maximumCustomDomains,
     }),
   );
 }
@@ -282,8 +284,17 @@ async function forwardConnect(
   const registry = env.REGISTRY.getByName("global");
   const organizationId = await registry.organizationForTunnel(tunnelId);
   if (organizationId === null) return jsonError(404, "not_found");
+  const limits = await limitsForOrganization(env, organizationId);
   const connectionId = crypto.randomUUID();
-  await registry.acquireConnection(tunnelId, organizationId, connectionId, null);
+  if (
+    !(await registry.acquireConnection(
+      tunnelId,
+      organizationId,
+      connectionId,
+      limits.maximumActiveTunnels,
+    ))
+  )
+    return jsonError(429, "active_tunnel_limit_reached");
   const headers = stripInternalHeaders(request.headers);
   headers.delete("authorization");
   headers.set("x-mtunnel-op", "connect");
@@ -292,7 +303,8 @@ async function forwardConnect(
   headers.set("x-mtunnel-dev-routing", env.DEV_ROUTING === "true" ? "true" : "false");
   headers.set("x-mtunnel-organization-id", organizationId);
   headers.set("x-mtunnel-connection-id", connectionId);
-  headers.set("x-mtunnel-lifetime-seconds", "0");
+  headers.set("x-mtunnel-lifetime-seconds", String(limits.maximumTunnelLifetimeSeconds));
+  headers.set("x-mtunnel-idle-seconds", String(limits.idleTimeoutSeconds));
   let response: Response;
   try {
     response = await env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
