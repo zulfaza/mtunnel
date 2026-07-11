@@ -24,9 +24,6 @@ pnpm exec wrangler secret put AUTH_SECRET
 pnpm exec wrangler secret put WORKOS_API_KEY
 pnpm exec wrangler secret put CLOUDFLARE_API_TOKEN
 pnpm exec wrangler secret put CLOUDFLARE_ZONE_ID
-pnpm exec wrangler secret put MIDTRANS_SERVER_KEY
-pnpm exec wrangler secret put STRIPE_SECRET_KEY
-pnpm exec wrangler secret put STRIPE_WEBHOOK_SECRET
 ```
 
 The Cloudflare API token needs `SSL and Certificates Write` for the tunnel zone.
@@ -40,23 +37,6 @@ pnpm exec wrangler d1 migrations apply mtunnel-domains --remote
 
 Enable AuthKit CLI Auth and Google OAuth in WorkOS. `AUTH_SECRET` signs only
 short-lived internal agent tokens; users never receive it.
-
-Billing is organization-scoped. Configure these provider callbacks after deploy:
-
-- Midtrans payment notification: `https://<TUNNEL_DOMAIN>/api/v1/webhooks/midtrans`
-- Stripe webhook: `https://<TUNNEL_DOMAIN>/api/v1/webhooks/stripe`, subscribed to
-  `customer.subscription.created`, `customer.subscription.updated`, and
-  `customer.subscription.deleted`
-
-Set `MIDTRANS_IS_PRODUCTION=true` under `vars` only when using the production
-Midtrans server key; when omitted, QRIS charges use the sandbox. Stripe Checkout
-creates the Rp50,000 monthly card price inline, so no Stripe product or price ID
-is required. Enable Stripe's customer portal so organizations can manage or
-cancel recurring payments. Run `mt billing status`, `mt billing qris`,
-`mt billing subscribe`, `mt billing portal`, or `mt billing sync` to exercise
-the authenticated organization flows. Checkout creates and persists the Stripe
-customer before opening the payment page. Webhooks use the event only to locate
-that customer, then fetch and store authoritative subscription state from Stripe.
 
 ## DNS and routes
 

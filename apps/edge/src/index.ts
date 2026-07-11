@@ -1,13 +1,4 @@
 import { mintAgentToken, verifyAgentToken } from "./auth/index.js";
-import {
-  createQrisCharge,
-  createStripeCheckout,
-  createStripePortal,
-  entitlements,
-  handleMidtransWebhook,
-  handleStripeWebhook,
-  syncOrganizationStripeData,
-} from "./billing.js";
 import { authenticateUser, workosForm } from "./auth/workos.js";
 import { RegistryDO } from "./durable-objects/registry-do.js";
 import { TunnelDO } from "./durable-objects/tunnel-do.js";
@@ -80,102 +71,6 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
     tunnelId: input.tunnelId,
     expiresAt: minted.claims.exp,
   });
-}
-
-async function handleBillingCheckout(
-  request: Request,
-  env: Env,
-  provider: "qris" | "stripe",
-): Promise<Response> {
-  const auth = await authenticateUser(request, env);
-  if (!auth.ok)
-    return jsonError(
-      auth.status,
-      auth.status === 401 ? "unauthorized" : "organization_unavailable",
-    );
-  try {
-    if (provider === "stripe") {
-      const url = new URL(request.url);
-      return jsonResponse(
-        await createStripeCheckout(env, auth.organizationId, `${url.protocol}//${url.host}`),
-        201,
-      );
-    }
-    let amount = 10_000;
-    const body: unknown = await request.json().catch(() => ({}));
-    if (isRecord(body) && body.amountIdr !== undefined) {
-      if (typeof body.amountIdr !== "number") return jsonError(400, "bad_request");
-      amount = body.amountIdr;
-    }
-    return jsonResponse(await createQrisCharge(env, auth.organizationId, amount), 201);
-  } catch (error) {
-    if (error instanceof RangeError) return jsonError(400, "amount_below_minimum", error.message);
-    return jsonError(
-      503,
-      "billing_provider_unavailable",
-      error instanceof Error ? error.message : undefined,
-    );
-  }
-}
-
-async function handleBillingPortal(request: Request, env: Env): Promise<Response> {
-  const auth = await authenticateUser(request, env);
-  if (!auth.ok)
-    return jsonError(
-      auth.status,
-      auth.status === 401 ? "unauthorized" : "organization_unavailable",
-    );
-  const url = new URL(request.url);
-  try {
-    return jsonResponse(
-      await createStripePortal(env, auth.organizationId, `${url.protocol}//${url.host}`),
-      201,
-    );
-  } catch (error) {
-    if (error instanceof RangeError)
-      return jsonError(409, "stripe_customer_missing", error.message);
-    return jsonError(
-      503,
-      "billing_provider_unavailable",
-      error instanceof Error ? error.message : undefined,
-    );
-  }
-}
-
-async function handleBillingStatus(request: Request, env: Env): Promise<Response> {
-  const auth = await authenticateUser(request, env);
-  if (!auth.ok)
-    return jsonError(
-      auth.status,
-      auth.status === 401 ? "unauthorized" : "organization_unavailable",
-    );
-  return jsonResponse({
-    organizationId: auth.organizationId,
-    ...(await entitlements(env, auth.organizationId)),
-  });
-}
-
-async function handleBillingSync(request: Request, env: Env): Promise<Response> {
-  const auth = await authenticateUser(request, env);
-  if (!auth.ok)
-    return jsonError(
-      auth.status,
-      auth.status === 401 ? "unauthorized" : "organization_unavailable",
-    );
-  try {
-    if (!(await syncOrganizationStripeData(env, auth.organizationId)))
-      return jsonError(409, "stripe_customer_missing");
-    return jsonResponse({
-      organizationId: auth.organizationId,
-      ...(await entitlements(env, auth.organizationId)),
-    });
-  } catch (error) {
-    return jsonError(
-      503,
-      "billing_provider_unavailable",
-      error instanceof Error ? error.message : undefined,
-    );
-  }
 }
 
 async function proxyWorkosAuth(
@@ -387,12 +282,8 @@ async function forwardConnect(
   const registry = env.REGISTRY.getByName("global");
   const organizationId = await registry.organizationForTunnel(tunnelId);
   if (organizationId === null) return jsonError(404, "not_found");
-  const limits = await entitlements(env, organizationId);
   const connectionId = crypto.randomUUID();
-  if (
-    !(await registry.acquireConnection(tunnelId, organizationId, connectionId, limits.tunnelLimit))
-  )
-    return jsonError(429, "tunnel_limit_reached");
+  await registry.acquireConnection(tunnelId, organizationId, connectionId, null);
   const headers = stripInternalHeaders(request.headers);
   headers.delete("authorization");
   headers.set("x-mtunnel-op", "connect");
@@ -401,10 +292,7 @@ async function forwardConnect(
   headers.set("x-mtunnel-dev-routing", env.DEV_ROUTING === "true" ? "true" : "false");
   headers.set("x-mtunnel-organization-id", organizationId);
   headers.set("x-mtunnel-connection-id", connectionId);
-  headers.set(
-    "x-mtunnel-lifetime-seconds",
-    limits.tunnelLifetimeSeconds === null ? "0" : String(limits.tunnelLifetimeSeconds),
-  );
+  headers.set("x-mtunnel-lifetime-seconds", "0");
   let response: Response;
   try {
     response = await env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
@@ -453,24 +341,6 @@ async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise
     return proxyWorkosAuth(request, env, "refresh");
   if (request.method === "POST" && url.pathname === "/api/v1/auth/token")
     return handleToken(request, env);
-  if (request.method === "POST" && url.pathname === "/api/v1/billing/qris")
-    return handleBillingCheckout(request, env, "qris");
-  if (request.method === "POST" && url.pathname === "/api/v1/billing/stripe")
-    return handleBillingCheckout(request, env, "stripe");
-  if (request.method === "POST" && url.pathname === "/api/v1/billing/portal")
-    return handleBillingPortal(request, env);
-  if (request.method === "GET" && url.pathname === "/api/v1/billing/status")
-    return handleBillingStatus(request, env);
-  if (request.method === "POST" && url.pathname === "/api/v1/billing/sync")
-    return handleBillingSync(request, env);
-  if (request.method === "POST" && url.pathname === "/api/v1/webhooks/midtrans")
-    return (await handleMidtransWebhook(request, env))
-      ? jsonResponse({ received: true })
-      : jsonError(400, "invalid_webhook");
-  if (request.method === "POST" && url.pathname === "/api/v1/webhooks/stripe")
-    return (await handleStripeWebhook(request, env))
-      ? jsonResponse({ received: true })
-      : jsonError(400, "invalid_webhook");
   if (request.method === "POST" && url.pathname === "/api/v1/domains")
     return handleDomainAdd(request, env);
   if (request.method === "GET" && url.pathname === "/api/v1/domains")

@@ -167,7 +167,7 @@ Phases 3 and 4 touch disjoint directories and may be implemented in parallel.
 
 ## Out of scope (do not build)
 
-TCP/UDP/SSH tunnels, custom domains, dashboard, billing, teams, analytics, traffic
+TCP/UDP/SSH tunnels, custom domains, dashboard, teams, analytics, traffic
 replay, request inspector, multiple agents per tunnel, Cloudflare Containers, any
 caching.
 

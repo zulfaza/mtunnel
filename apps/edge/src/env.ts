@@ -21,8 +21,4 @@ export interface Env {
   readonly MAX_RESPONSE_BYTES?: string;
   readonly HEARTBEAT_INTERVAL_MS?: string;
   readonly HEARTBEAT_TIMEOUT_MS?: string;
-  readonly MIDTRANS_SERVER_KEY?: string;
-  readonly MIDTRANS_IS_PRODUCTION?: string;
-  readonly STRIPE_SECRET_KEY?: string;
-  readonly STRIPE_WEBHOOK_SECRET?: string;
 }

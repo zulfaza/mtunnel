@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/zul/mtunnel/agents/tunnel/internal/agent"
@@ -37,14 +36,6 @@ func newHTTPCmd(o *rootOptions) *cobra.Command {
 		}
 		if accessToken == "" {
 			return fmt.Errorf("login required; run mt login")
-		}
-		var billing billingStatus
-		if err := executeBillingRequest(o, "GET", "/api/v1/billing/status", nil, &billing); err != nil {
-			return fmt.Errorf("get organization limits: %w", err)
-		}
-		maximumIdleTimeout := time.Duration(billing.MaximumIdleSeconds) * time.Second
-		if o.idleTimeout <= 0 || o.idleTimeout > maximumIdleTimeout {
-			return fmt.Errorf("idle timeout must be between 1 second and %s for the %s plan", maximumIdleTimeout, billing.Plan)
 		}
 		name := o.name
 		if name == "" {

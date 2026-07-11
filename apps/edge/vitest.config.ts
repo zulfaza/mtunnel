@@ -18,8 +18,6 @@ export default defineConfig({
           DEV_ROUTING: "true",
           REQUEST_TIMEOUT_MS: "100",
           MAX_PENDING_REQUESTS: "2",
-          STRIPE_SECRET_KEY: "sk_test_worker",
-          STRIPE_WEBHOOK_SECRET: "whsec_worker",
         },
       },
     }),

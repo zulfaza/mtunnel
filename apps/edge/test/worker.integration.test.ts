@@ -58,21 +58,6 @@ async function tokenFor(tunnelId: string): Promise<string> {
   return (value as Record<string, string>).token;
 }
 
-async function grantDomainCredit(orderId: string): Promise<void> {
-  const now = Date.now();
-  await env.DOMAINS.batch([
-    env.DOMAINS.prepare(
-      `INSERT INTO billing_orders
-         (id, organization_id, provider, amount_idr, status, created_at, updated_at)
-       VALUES (?, 'development-organization', 'midtrans', 10000, 'paid', ?, ?)`,
-    ).bind(orderId, now, now),
-    env.DOMAINS.prepare(
-      `INSERT INTO billing_domain_credits (order_id, organization_id, created_at)
-       VALUES (?, 'development-organization', ?)`,
-    ).bind(orderId, now),
-  ]);
-}
-
 async function openAgent(tunnelId: string): Promise<FakeAgent> {
   const token = await tokenFor(tunnelId);
   const response = await SELF.fetch(`http://worker.test/api/v1/tunnels/${tunnelId}/connect`, {
@@ -187,7 +172,6 @@ describe("edge Worker routes", () => {
   });
 
   it("creates a pending custom domain with DNS ownership records", async () => {
-    await grantDomainCredit("custom-domain-credit");
     const response = await SELF.fetch("http://worker.test/api/v1/domains", {
       method: "POST",
       headers: { authorization: "Bearer development-token", "content-type": "application/json" },
@@ -209,7 +193,6 @@ describe("edge Worker routes", () => {
   });
 
   it("lists, tracks usage, and deletes organization custom domains", async () => {
-    await grantDomainCredit("usage-domain-credit");
     const hostname = "usage.customer.test";
     const created = await SELF.fetch("http://worker.test/api/v1/domains", {
       method: "POST",

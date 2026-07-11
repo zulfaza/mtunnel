@@ -1,5 +1,4 @@
 import type { Env } from "./env.js";
-import { entitlements } from "./billing.js";
 
 export type DomainStatus = "pending_dns" | "provisioning" | "active" | "failed";
 
@@ -139,20 +138,7 @@ export async function addDomain(
     readonly userId: string;
   },
 ): Promise<DomainResult> {
-  const limits = await entitlements(env, input.organizationId);
-  const current = await env.DOMAINS.prepare(
-    "SELECT COUNT(*) AS count FROM custom_domains WHERE organization_id = ?",
-  )
-    .bind(input.organizationId)
-    .first<{ count: number }>();
   const existing = await findDomain(env, input.hostname);
-  if (existing === null && (current?.count ?? 0) >= limits.customDomainLimit)
-    return {
-      ok: false,
-      status: 409,
-      error: "custom_domain_limit_reached",
-      message: "Purchase a QRIS domain credit or subscribe to Premium to add this domain",
-    };
   const claimed = await env.REGISTRY.getByName("global").claimTunnel(
     input.tunnelId,
     input.organizationId,
