@@ -6,6 +6,7 @@ import {
   entitlements,
   handleMidtransWebhook,
   handleStripeWebhook,
+  syncOrganizationStripeData,
 } from "./billing.js";
 import { authenticateUser, workosForm } from "./auth/workos.js";
 import { RegistryDO } from "./durable-objects/registry-do.js";
@@ -152,6 +153,29 @@ async function handleBillingStatus(request: Request, env: Env): Promise<Response
     organizationId: auth.organizationId,
     ...(await entitlements(env, auth.organizationId)),
   });
+}
+
+async function handleBillingSync(request: Request, env: Env): Promise<Response> {
+  const auth = await authenticateUser(request, env);
+  if (!auth.ok)
+    return jsonError(
+      auth.status,
+      auth.status === 401 ? "unauthorized" : "organization_unavailable",
+    );
+  try {
+    if (!(await syncOrganizationStripeData(env, auth.organizationId)))
+      return jsonError(409, "stripe_customer_missing");
+    return jsonResponse({
+      organizationId: auth.organizationId,
+      ...(await entitlements(env, auth.organizationId)),
+    });
+  } catch (error) {
+    return jsonError(
+      503,
+      "billing_provider_unavailable",
+      error instanceof Error ? error.message : undefined,
+    );
+  }
 }
 
 async function proxyWorkosAuth(
@@ -437,6 +461,8 @@ async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise
     return handleBillingPortal(request, env);
   if (request.method === "GET" && url.pathname === "/api/v1/billing/status")
     return handleBillingStatus(request, env);
+  if (request.method === "POST" && url.pathname === "/api/v1/billing/sync")
+    return handleBillingSync(request, env);
   if (request.method === "POST" && url.pathname === "/api/v1/webhooks/midtrans")
     return (await handleMidtransWebhook(request, env))
       ? jsonResponse({ received: true })

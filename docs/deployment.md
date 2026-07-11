@@ -53,8 +53,10 @@ Midtrans server key; when omitted, QRIS charges use the sandbox. Stripe Checkout
 creates the Rp50,000 monthly card price inline, so no Stripe product or price ID
 is required. Enable Stripe's customer portal so organizations can manage or
 cancel recurring payments. Run `mt billing status`, `mt billing qris`,
-`mt billing subscribe`, or `mt billing portal` to exercise the authenticated
-organization flows.
+`mt billing subscribe`, `mt billing portal`, or `mt billing sync` to exercise
+the authenticated organization flows. Checkout creates and persists the Stripe
+customer before opening the payment page. Webhooks use the event only to locate
+that customer, then fetch and store authoritative subscription state from Stripe.
 
 ## DNS and routes
 

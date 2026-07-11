@@ -112,5 +112,16 @@ func newBillingCmd(o *rootOptions) *cobra.Command {
 		}
 		return err
 	}})
+	billing.AddCommand(&cobra.Command{Use: "sync", Short: "Refresh organization billing from Stripe", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		var value billingStatus
+		if err := executeBillingRequest(o, http.MethodPost, "/api/v1/billing/sync", nil, &value); err != nil {
+			return fmt.Errorf("sync Stripe billing: %w", err)
+		}
+		encoded, err := json.MarshalIndent(value, "", "  ")
+		if err == nil {
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(encoded))
+		}
+		return err
+	}})
 	return billing
 }
