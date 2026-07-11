@@ -89,6 +89,20 @@ func TestCommandName(t *testing.T) {
 	}
 }
 
+func TestMissingArgumentsShowsCommandHelp(t *testing.T) {
+	cmd := newRootCmd()
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"http"})
+	err := cmd.Execute()
+	if err == nil || err.Error() != "accepts 1 arg(s), received 0" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(output.String(), "Usage:\n  mt http <port|name> [flags]") {
+		t.Fatalf("output missing command help: %q", output.String())
+	}
+}
+
 func TestHTTPStatusColors(t *testing.T) {
 	tests := []struct {
 		status string

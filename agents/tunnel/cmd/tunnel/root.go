@@ -35,6 +35,7 @@ func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "mt",
 		Short:             "Expose a local HTTP server through mtunnel",
+		SilenceErrors:     true,
 		SilenceUsage:      true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return o.configureLogger() },
 	}
@@ -49,6 +50,18 @@ func newRootCmd() *cobra.Command {
 	flags.StringVar(&o.logLevel, "log-level", "info", "debug, info, warn, or error")
 	cmd.AddCommand(newLoginCmd(o), newHTTPCmd(o), newStatusCmd(o), newDomainCmd(o), newUpdateCmd(), newVersionCmd())
 	return cmd
+}
+
+func exactArgsWithHelp(count int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if err := cobra.ExactArgs(count)(cmd, args); err != nil {
+			if helpErr := cmd.Help(); helpErr != nil {
+				return helpErr
+			}
+			return err
+		}
+		return nil
+	}
 }
 
 func (o *rootOptions) configureLogger() error {

@@ -21,7 +21,7 @@ import (
 )
 
 func newHTTPCmd(o *rootOptions) *cobra.Command {
-	return &cobra.Command{Use: "http <port|name>", Short: "Open an HTTP tunnel", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "http <port|name>", Short: "Open an HTTP tunnel", Args: exactArgsWithHelp(1), RunE: func(cmd *cobra.Command, args []string) error {
 		port, tunnelName, configuredHostname, err := resolveHTTPTarget(args[0])
 		if err != nil {
 			return err

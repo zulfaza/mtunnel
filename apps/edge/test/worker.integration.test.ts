@@ -182,7 +182,7 @@ describe("edge Worker routes", () => {
       hostname: "app.customer.test",
       tunnelId: "custom-domain-test",
       status: "pending_dns",
-      cname: { type: "CNAME", name: "app.customer.test", value: "worker.test" },
+      cname: { type: "CNAME", name: "app.customer.test", value: "cname.worker.test" },
       verification: { type: "TXT", name: "_mtunnel.app.customer.test" },
     });
     const status = await SELF.fetch("http://worker.test/api/v1/domains/app.customer.test/status", {

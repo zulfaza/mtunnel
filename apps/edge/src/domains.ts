@@ -165,8 +165,8 @@ export async function addDomain(
   if (record.organizationId !== input.organizationId || record.tunnelId !== input.tunnelId)
     return { ok: false, status: 409, error: "domain_or_tunnel_taken" };
   return inserted.meta.changes > 0
-    ? { ok: true, domain: view(record, env.TUNNEL_DOMAIN), created: true }
-    : { ok: true, domain: view(record, env.TUNNEL_DOMAIN) };
+    ? { ok: true, domain: view(record, env.CUSTOM_DOMAIN_CNAME), created: true }
+    : { ok: true, domain: view(record, env.CUSTOM_DOMAIN_CNAME) };
 }
 
 function parseDnsAnswers(value: unknown): readonly string[] {
@@ -273,14 +273,14 @@ export async function verifyDomain(
   if (record === null || record.organizationId !== organizationId)
     return { ok: false, status: 404, error: "not_found" };
   if (record.status === "active" || record.status === "provisioning")
-    return { ok: true, domain: view(record, env.TUNNEL_DOMAIN) };
+    return { ok: true, domain: view(record, env.CUSTOM_DOMAIN_CNAME) };
   if (!(await hasVerificationRecord(record))) {
     return {
       ok: false,
       status: 409,
       error: "dns_verification_pending",
       message: "TXT verification record not found",
-      domain: view(record, env.TUNNEL_DOMAIN),
+      domain: view(record, env.CUSTOM_DOMAIN_CNAME),
     };
   }
   if (env.CLOUDFLARE_API_TOKEN === undefined || env.CLOUDFLARE_ZONE_ID === undefined)
@@ -307,7 +307,7 @@ export async function verifyDomain(
         existing.id,
         existing.active ? "active" : "provisioning",
       );
-      return { ok: true, domain: view(saved, env.TUNNEL_DOMAIN) };
+      return { ok: true, domain: view(saved, env.CUSTOM_DOMAIN_CNAME) };
     }
     const message = cloudflareFailure(value, upstream.status);
     await saveFailure(env, record, message);
@@ -325,7 +325,7 @@ export async function verifyDomain(
     provisioned.id,
     provisioned.active ? "active" : "provisioning",
   );
-  return { ok: true, domain: view(saved, env.TUNNEL_DOMAIN) };
+  return { ok: true, domain: view(saved, env.CUSTOM_DOMAIN_CNAME) };
 }
 
 export async function domainStatus(
@@ -348,18 +348,18 @@ export async function domainStatus(
     env.CLOUDFLARE_API_TOKEN === undefined ||
     env.CLOUDFLARE_ZONE_ID === undefined
   )
-    return { ok: true, domain: view(record, env.TUNNEL_DOMAIN) };
+    return { ok: true, domain: view(record, env.CUSTOM_DOMAIN_CNAME) };
   const upstream = await fetch(
     `https://api.cloudflare.com/client/v4/zones/${env.CLOUDFLARE_ZONE_ID}/custom_hostnames/${record.cloudflareHostnameId}`,
     { headers: { authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } },
   );
-  if (!upstream.ok) return { ok: true, domain: view(record, env.TUNNEL_DOMAIN) };
+  if (!upstream.ok) return { ok: true, domain: view(record, env.CUSTOM_DOMAIN_CNAME) };
   const value: unknown = await upstream.json().catch((): null => null);
   const provisioned = cloudflareHostname(value);
   if (provisioned === null || !provisioned.active)
-    return { ok: true, domain: view(record, env.TUNNEL_DOMAIN) };
+    return { ok: true, domain: view(record, env.CUSTOM_DOMAIN_CNAME) };
   const saved = await saveProvisioningResult(env, record, provisioned.id, "active");
-  return { ok: true, domain: view(saved, env.TUNNEL_DOMAIN) };
+  return { ok: true, domain: view(saved, env.CUSTOM_DOMAIN_CNAME) };
 }
 
 export async function listDomains(
@@ -385,7 +385,7 @@ export async function listDomains(
   return {
     domains: result.results.flatMap((value): readonly DomainView[] => {
       const record = parseDomainRecord(value);
-      return record === null ? [] : [view(record, env.TUNNEL_DOMAIN)];
+      return record === null ? [] : [view(record, env.CUSTOM_DOMAIN_CNAME)];
     }),
   };
 }
@@ -425,7 +425,7 @@ export async function deleteDomain(
   await env.DOMAINS.prepare("DELETE FROM custom_domains WHERE hostname = ? AND organization_id = ?")
     .bind(hostname, organizationId)
     .run();
-  return { ok: true, domain: view(record, env.TUNNEL_DOMAIN) };
+  return { ok: true, domain: view(record, env.CUSTOM_DOMAIN_CNAME) };
 }
 
 export async function markDomainUsed(env: Env, hostname: string): Promise<void> {

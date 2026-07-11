@@ -9,7 +9,7 @@ SaaS enabled on the `makarima.xyz` zone. Configure an active fallback origin.
 
 Edit `apps/edge/wrangler.jsonc`:
 
-1. Set `TUNNEL_DOMAIN=makarima.xyz` and replace `WORKOS_CLIENT_ID`.
+1. Set `TUNNEL_DOMAIN=makarima.xyz`, `CUSTOM_DOMAIN_CNAME=cname.makarima.xyz`, and replace `WORKOS_CLIENT_ID`.
 2. Review request, response, pending-request, timeout, and heartbeat limits.
 3. Replace the placeholder route comments with routes for the base and wildcard
    hostnames appropriate to your zone.

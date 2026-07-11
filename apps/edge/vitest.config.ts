@@ -15,6 +15,7 @@ export default defineConfig({
           AUTH_MODE: "development",
           WORKOS_CLIENT_ID: "client_test",
           TUNNEL_DOMAIN: "worker.test",
+          CUSTOM_DOMAIN_CNAME: "cname.worker.test",
           DEV_ROUTING: "true",
           REQUEST_TIMEOUT_MS: "100",
           MAX_PENDING_REQUESTS: "2",

@@ -31,6 +31,7 @@
   ],
   "vars": {
     "TUNNEL_DOMAIN": "makarima.xyz",
+    "CUSTOM_DOMAIN_CNAME": "cname.makarima.xyz",
     "WORKOS_CLIENT_ID": "client_01K65Z0KC2ADHQJQ179WCEJ0KG",
     "DEV_ROUTING": "false",
     "REQUEST_TIMEOUT_MS": "30000",
@@ -49,5 +50,6 @@
       "custom_domain": false,
     },
     { "pattern": "makarima.xyz", "custom_domain": true },
+    { "pattern": "cname.makarima.xyz", "custom_domain": true },
   ],
 }

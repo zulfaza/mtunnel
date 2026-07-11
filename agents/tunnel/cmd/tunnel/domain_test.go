@@ -65,6 +65,9 @@ func TestDomainAddRefreshesExpiredAccessToken(t *testing.T) {
 	if !bytes.Contains(output.Bytes(), []byte("TXT _mtunnel.dash.dev.upsell.is")) {
 		t.Fatalf("output missing verification instructions: %q", output.String())
 	}
+	if !bytes.Contains(output.Bytes(), []byte("mt domain verify dashboard\n")) {
+		t.Fatalf("output missing tunnel-name verify command: %q", output.String())
+	}
 }
 
 func TestDecodeDomainResultAcceptsLegacyCNAME(t *testing.T) {
@@ -119,5 +122,107 @@ func TestDomainListAndDelete(t *testing.T) {
 	}
 	if output.String() != "Deleted custom domain app.upsell.is.\n" {
 		t.Fatalf("unexpected delete output: %q", output.String())
+	}
+}
+
+func TestDomainDeleteByTunnelName(t *testing.T) {
+	var deletedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/domains":
+			w.Write([]byte(`{"domains":[{"hostname":"dev.makarima.dev","tunnelId":"mdev","status":"active","cname":{"type":"CNAME","name":"dev.makarima.dev","value":"makarima.xyz"}}]}`))
+		case r.Method == http.MethodDelete:
+			deletedPath = r.URL.Path
+			w.Write([]byte(`{"hostname":"dev.makarima.dev","tunnelId":"mdev","status":"active","cname":{"type":"CNAME","name":"dev.makarima.dev","value":"makarima.xyz"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := config.Save(configPath, config.Config{Server: server.URL, AccessToken: "access"}); err != nil {
+		t.Fatal(err)
+	}
+	o := rootOptions{config: configPath}
+	cmd := newDomainCmd(&o)
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"delete", "mdev"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if deletedPath != "/api/v1/domains/dev.makarima.dev" {
+		t.Fatalf("deleted path = %q", deletedPath)
+	}
+	if output.String() != "Deleted custom domain dev.makarima.dev.\n" {
+		t.Fatalf("unexpected delete output: %q", output.String())
+	}
+}
+
+func TestDomainVerifyByTunnelName(t *testing.T) {
+	var verifiedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/domains":
+			w.Write([]byte(`{"domains":[{"hostname":"dev.makarima.dev","tunnelId":"mdev","status":"pending_dns","cname":{"type":"CNAME","name":"dev.makarima.dev","value":"cname.makarima.xyz"}}]}`))
+		case r.Method == http.MethodPost:
+			verifiedPath = r.URL.Path
+			w.Write([]byte(`{"hostname":"dev.makarima.dev","tunnelId":"mdev","status":"active","cname":{"type":"CNAME","name":"dev.makarima.dev","value":"cname.makarima.xyz"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := config.Save(configPath, config.Config{Server: server.URL, AccessToken: "access"}); err != nil {
+		t.Fatal(err)
+	}
+	o := rootOptions{config: configPath}
+	cmd := newDomainCmd(&o)
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"verify", "mdev"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if verifiedPath != "/api/v1/domains/dev.makarima.dev/verify" {
+		t.Fatalf("verified path = %q", verifiedPath)
+	}
+	if output.String() != "Domain: dev.makarima.dev\nStatus: active\n" {
+		t.Fatalf("unexpected verify output: %q", output.String())
+	}
+}
+
+func TestDomainVerifyAlreadyActive(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/domains":
+			w.Write([]byte(`{"domains":[{"hostname":"dev.makarima.dev","tunnelId":"mdev","status":"active","cname":{"type":"CNAME","name":"dev.makarima.dev","value":"cname.makarima.xyz"}}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/domains/dev.makarima.dev/verify":
+			w.Write([]byte(`{"hostname":"dev.makarima.dev","tunnelId":"mdev","status":"active","cname":{"type":"CNAME","name":"dev.makarima.dev","value":"cname.makarima.xyz"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := config.Save(configPath, config.Config{Server: server.URL, AccessToken: "access"}); err != nil {
+		t.Fatal(err)
+	}
+	cmd := newDomainCmd(&rootOptions{config: configPath})
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"verify", "mdev"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "Domain dev.makarima.dev already verified. You can use it now.\n" {
+		t.Fatalf("unexpected verify output: %q", output.String())
 	}
 }

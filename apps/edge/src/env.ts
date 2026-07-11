@@ -14,6 +14,7 @@ export interface Env {
   readonly CLOUDFLARE_API_TOKEN?: string;
   readonly CLOUDFLARE_ZONE_ID?: string;
   readonly TUNNEL_DOMAIN: string;
+  readonly CUSTOM_DOMAIN_CNAME: string;
   readonly DEV_ROUTING: string;
   readonly REQUEST_TIMEOUT_MS?: string;
   readonly MAX_PENDING_REQUESTS?: string;
