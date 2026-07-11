@@ -42,7 +42,8 @@ function validTokenBody(
 
 async function handleToken(request: Request, env: Env): Promise<Response> {
   const auth = await authenticateUser(request, env);
-  if (!auth.ok) return jsonError(401, "unauthorized");
+  if (!auth.ok)
+    return jsonError(auth.status, auth.status === 401 ? "unauthorized" : "organization_unavailable");
   let body: unknown;
   try {
     body = await request.json();
@@ -51,7 +52,9 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
   }
   const input = validTokenBody(body);
   if (input === null) return jsonError(400, "bad_request");
-  const claimed = await env.REGISTRY.getByName("global").claimTunnel(input.tunnelId, auth.userId);
+  const claimed = await env.REGISTRY
+    .getByName("global")
+    .claimTunnel(input.tunnelId, auth.organizationId, auth.userId);
   if (!claimed) return jsonError(409, "tunnel_name_taken");
   if (env.AUTH_SECRET === undefined) return jsonError(500, "server_misconfigured");
   const minted = await mintAgentToken(env.AUTH_SECRET, input.tunnelId, auth.userId);
@@ -120,7 +123,8 @@ function domainResponse(result: DomainResult): Response {
 
 async function handleDomainAdd(request: Request, env: Env): Promise<Response> {
   const auth = await authenticateUser(request, env);
-  if (!auth.ok) return jsonError(401, "unauthorized");
+  if (!auth.ok)
+    return jsonError(auth.status, auth.status === 401 ? "unauthorized" : "organization_unavailable");
   let value: unknown;
   try {
     value = await request.json();
@@ -148,7 +152,8 @@ async function handleDomainAdd(request: Request, env: Env): Promise<Response> {
     await addDomain(env, {
       hostname,
       tunnelId: value.tunnelId,
-      ownerId: auth.userId,
+      organizationId: auth.organizationId,
+      userId: auth.userId,
     }),
   );
 }
@@ -160,7 +165,8 @@ async function handleDomainAction(
   action: "verify" | "status",
 ): Promise<Response> {
   const auth = await authenticateUser(request, env);
-  if (!auth.ok) return jsonError(401, "unauthorized");
+  if (!auth.ok)
+    return jsonError(auth.status, auth.status === 401 ? "unauthorized" : "organization_unavailable");
   const hostname = hostnameValue.trim().toLowerCase();
   if (
     !validHostname(hostname) ||
@@ -170,8 +176,8 @@ async function handleDomainAction(
     return jsonError(400, "bad_request");
   return domainResponse(
     action === "verify"
-      ? await verifyDomain(env, hostname, auth.userId)
-      : await domainStatus(env, hostname, auth.userId),
+      ? await verifyDomain(env, hostname, auth.organizationId, auth.userId)
+      : await domainStatus(env, hostname, auth.organizationId, auth.userId),
   );
 }
 
@@ -286,10 +292,18 @@ async function fetch(request: Request, env: Env, _ctx: ExecutionContext): Promis
   const status = /^\/api\/v1\/tunnels\/([^/]+)\/status$/u.exec(url.pathname);
   if (request.method === "GET" && status !== null) {
     const auth = await authenticateUser(request, env);
-    if (!auth.ok) return jsonError(401, "unauthorized");
+    if (!auth.ok)
+      return jsonError(
+        auth.status,
+        auth.status === 401 ? "unauthorized" : "organization_unavailable",
+      );
     const tunnelId = status[1];
     if (tunnelId === undefined || !isValidTunnelId(tunnelId)) return jsonError(400, "bad_request");
-    if (!(await env.REGISTRY.getByName("global").ownsTunnel(tunnelId, auth.userId)))
+    if (
+      !(await env.REGISTRY
+        .getByName("global")
+        .ownsTunnel(tunnelId, auth.organizationId, auth.userId))
+    )
       return jsonError(404, "not_found");
     return jsonResponse(await env.TUNNELS.getByName(tunnelId).status(tunnelId));
   }

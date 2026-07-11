@@ -24,7 +24,7 @@ export type DomainResult =
 interface DomainRecord {
   readonly hostname: string;
   readonly tunnelId: string;
-  readonly ownerId: string;
+  readonly organizationId: string;
   readonly verificationToken: string;
   readonly status: DomainStatus;
   readonly cloudflareHostnameId: string | null;
@@ -46,7 +46,7 @@ function parseDomainRecord(value: unknown): DomainRecord | null {
     !isRecord(value) ||
     typeof value.hostname !== "string" ||
     typeof value.tunnel_id !== "string" ||
-    typeof value.owner_id !== "string" ||
+    typeof value.organization_id !== "string" ||
     typeof value.verification_token !== "string" ||
     !isDomainStatus(value.status) ||
     (value.cloudflare_hostname_id !== null && typeof value.cloudflare_hostname_id !== "string") ||
@@ -56,7 +56,7 @@ function parseDomainRecord(value: unknown): DomainRecord | null {
   return {
     hostname: value.hostname,
     tunnelId: value.tunnel_id,
-    ownerId: value.owner_id,
+    organizationId: value.organization_id,
     verificationToken: value.verification_token,
     status: value.status,
     cloudflareHostnameId: value.cloudflare_hostname_id,
@@ -96,7 +96,7 @@ function randomToken(): string {
 
 async function findDomain(env: Env, hostname: string): Promise<DomainRecord | null> {
   const value: unknown = await env.DOMAINS.prepare(
-    `SELECT hostname, tunnel_id, owner_id, verification_token, status,
+    `SELECT hostname, tunnel_id, organization_id, verification_token, status,
             cloudflare_hostname_id, error
        FROM custom_domains WHERE hostname = ?`,
   )
@@ -105,24 +105,52 @@ async function findDomain(env: Env, hostname: string): Promise<DomainRecord | nu
   return parseDomainRecord(value);
 }
 
+async function migrateLegacyDomain(
+  env: Env,
+  record: DomainRecord | null,
+  organizationId: string,
+  userId: string,
+): Promise<DomainRecord | null> {
+  if (record === null || record.organizationId !== userId) return record;
+  await env.DOMAINS.prepare(
+    "UPDATE custom_domains SET organization_id = ?, updated_at = ? WHERE hostname = ?",
+  )
+    .bind(organizationId, Date.now(), record.hostname)
+    .run();
+  return { ...record, organizationId };
+}
+
 export async function addDomain(
   env: Env,
-  input: { readonly hostname: string; readonly tunnelId: string; readonly ownerId: string },
+  input: {
+    readonly hostname: string;
+    readonly tunnelId: string;
+    readonly organizationId: string;
+    readonly userId: string;
+  },
 ): Promise<DomainResult> {
-  const claimed = await env.REGISTRY.getByName("global").claimTunnel(input.tunnelId, input.ownerId);
+  const claimed = await env.REGISTRY
+    .getByName("global")
+    .claimTunnel(input.tunnelId, input.organizationId, input.userId);
   if (!claimed) return { ok: false, status: 409, error: "domain_or_tunnel_taken" };
+  await env.DOMAINS.prepare(
+    `UPDATE custom_domains SET organization_id = ?, updated_at = ?
+      WHERE hostname = ? AND organization_id = ?`,
+  )
+    .bind(input.organizationId, Date.now(), input.hostname, input.userId)
+    .run();
   const now = Date.now();
   const inserted = await env.DOMAINS.prepare(
     `INSERT INTO custom_domains
-       (hostname, tunnel_id, owner_id, verification_token, status, created_at, updated_at)
+       (hostname, tunnel_id, organization_id, verification_token, status, created_at, updated_at)
      VALUES (?, ?, ?, ?, 'pending_dns', ?, ?)
      ON CONFLICT(hostname) DO NOTHING`,
   )
-    .bind(input.hostname, input.tunnelId, input.ownerId, randomToken(), now, now)
+    .bind(input.hostname, input.tunnelId, input.organizationId, randomToken(), now, now)
     .run();
   const record = await findDomain(env, input.hostname);
   if (record === null) return { ok: false, status: 502, error: "domain_storage_failed" };
-  if (record.ownerId !== input.ownerId || record.tunnelId !== input.tunnelId)
+  if (record.organizationId !== input.organizationId || record.tunnelId !== input.tunnelId)
     return { ok: false, status: 409, error: "domain_or_tunnel_taken" };
   return inserted.meta.changes > 0
     ? { ok: true, domain: view(record, env.TUNNEL_DOMAIN), created: true }
@@ -202,9 +230,9 @@ async function saveProvisioningResult(
   await env.DOMAINS.prepare(
     `UPDATE custom_domains
         SET status = ?, cloudflare_hostname_id = ?, error = NULL, updated_at = ?
-      WHERE hostname = ? AND owner_id = ?`,
+      WHERE hostname = ? AND organization_id = ?`,
   )
-    .bind(status, hostnameId, Date.now(), record.hostname, record.ownerId)
+    .bind(status, hostnameId, Date.now(), record.hostname, record.organizationId)
     .run();
   return { ...record, status, cloudflareHostnameId: hostnameId, error: null };
 }
@@ -212,19 +240,25 @@ async function saveProvisioningResult(
 async function saveFailure(env: Env, record: DomainRecord, message: string): Promise<void> {
   await env.DOMAINS.prepare(
     `UPDATE custom_domains SET status = 'failed', error = ?, updated_at = ?
-      WHERE hostname = ? AND owner_id = ?`,
+      WHERE hostname = ? AND organization_id = ?`,
   )
-    .bind(message, Date.now(), record.hostname, record.ownerId)
+    .bind(message, Date.now(), record.hostname, record.organizationId)
     .run();
 }
 
 export async function verifyDomain(
   env: Env,
   hostname: string,
-  ownerId: string,
+  organizationId: string,
+  userId: string,
 ): Promise<DomainResult> {
-  const record = await findDomain(env, hostname);
-  if (record === null || record.ownerId !== ownerId)
+  const record = await migrateLegacyDomain(
+    env,
+    await findDomain(env, hostname),
+    organizationId,
+    userId,
+  );
+  if (record === null || record.organizationId !== organizationId)
     return { ok: false, status: 404, error: "not_found" };
   if (record.status === "active" || record.status === "provisioning")
     return { ok: true, domain: view(record, env.TUNNEL_DOMAIN) };
@@ -285,10 +319,16 @@ export async function verifyDomain(
 export async function domainStatus(
   env: Env,
   hostname: string,
-  ownerId: string,
+  organizationId: string,
+  userId: string,
 ): Promise<DomainResult> {
-  const record = await findDomain(env, hostname);
-  if (record === null || record.ownerId !== ownerId)
+  const record = await migrateLegacyDomain(
+    env,
+    await findDomain(env, hostname),
+    organizationId,
+    userId,
+  );
+  if (record === null || record.organizationId !== organizationId)
     return { ok: false, status: 404, error: "not_found" };
   if (
     record.status !== "provisioning" ||

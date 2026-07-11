@@ -1,7 +1,10 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { Env } from "../env.js";
+import { ensureOrganizationForUser } from "./organizations.js";
 
-export type UserAuth = { readonly ok: true; readonly userId: string } | { readonly ok: false };
+export type UserAuth =
+  | { readonly ok: true; readonly userId: string; readonly organizationId: string }
+  | { readonly ok: false; readonly status: 401 | 503 };
 
 function bearer(request: Request): string | null {
   const value = request.headers.get("authorization");
@@ -10,9 +13,14 @@ function bearer(request: Request): string | null {
 
 export async function authenticateUser(request: Request, env: Env): Promise<UserAuth> {
   const token = bearer(request);
-  if (token === null) return { ok: false };
+  if (token === null) return { ok: false, status: 401 };
   if (env.AUTH_MODE === "development" && env.AUTH_SECRET !== undefined && token === env.AUTH_SECRET)
-    return { ok: true, userId: "development-user" };
+    return {
+      ok: true,
+      userId: "development-user",
+      organizationId: "development-organization",
+    };
+  let userId: string;
   try {
     const jwks = createRemoteJWKSet(
       new URL(`https://api.workos.com/sso/jwks/${encodeURIComponent(env.WORKOS_CLIENT_ID)}`),
@@ -20,12 +28,19 @@ export async function authenticateUser(request: Request, env: Env): Promise<User
     const result = await jwtVerify(token, jwks, {
       issuer: env.WORKOS_ISSUER ?? "https://api.workos.com/",
     });
-    return result.payload.client_id === env.WORKOS_CLIENT_ID &&
-      typeof result.payload.sub === "string"
-      ? { ok: true, userId: result.payload.sub }
-      : { ok: false };
+    if (
+      result.payload.client_id !== env.WORKOS_CLIENT_ID ||
+      typeof result.payload.sub !== "string"
+    )
+      return { ok: false, status: 401 };
+    userId = result.payload.sub;
   } catch {
-    return { ok: false };
+    return { ok: false, status: 401 };
+  }
+  try {
+    return { ok: true, userId, organizationId: await ensureOrganizationForUser(env, userId) };
+  } catch {
+    return { ok: false, status: 503 };
   }
 }
 
