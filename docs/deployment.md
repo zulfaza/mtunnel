@@ -28,12 +28,14 @@ pnpm exec wrangler secret put CLOUDFLARE_ZONE_ID
 
 The Cloudflare API token needs `SSL and Certificates Write` for the tunnel zone.
 
-Create the D1 database, copy its ID into `wrangler.jsonc`, and apply migrations:
+Create the D1 database and copy its ID into `wrangler.jsonc`:
 
 ```sh
 pnpm exec wrangler d1 create mtunnel-domains
-pnpm exec wrangler d1 migrations apply mtunnel-domains --remote
 ```
+
+The deployment command applies all pending remote D1 migrations before
+deploying the Worker. If a migration fails, the Worker is not deployed.
 
 Enable AuthKit CLI Auth and Google OAuth in WorkOS. `AUTH_SECRET` signs only
 short-lived internal agent tokens; users never receive it.
@@ -69,7 +71,7 @@ rule for the tunnel domain.
 
 ```sh
 cd apps/edge
-pnpm exec wrangler deploy
+pnpm run deploy
 curl https://tunnel.example.com/health
 ```
 

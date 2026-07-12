@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "build": "wrangler deploy --dry-run --outdir=dist",
+    "migrate:remote": "wrangler d1 migrations apply DOMAINS --remote",
+    "deploy": "pnpm run migrate:remote && wrangler deploy",
     "lint": "oxlint",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts --passWithNoTests"
