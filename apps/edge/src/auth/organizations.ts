@@ -1,38 +1,11 @@
 import type { Env } from "../env.js";
 
-const PERSONAL_EMAIL_DOMAINS = new Set([
-  "aol.com",
-  "fastmail.com",
-  "gmx.com",
-  "gmx.net",
-  "gmail.com",
-  "googlemail.com",
-  "hotmail.com",
-  "icloud.com",
-  "live.com",
-  "mail.com",
-  "me.com",
-  "msn.com",
-  "outlook.com",
-  "proton.me",
-  "protonmail.com",
-  "tutanota.com",
-  "tuta.com",
-  "yandex.com",
-  "yahoo.com",
-  "ymail.com",
-]);
-
 interface WorkosUser {
   readonly id: string;
   readonly email: string;
   readonly first_name?: string | null;
   readonly last_name?: string | null;
   readonly email_verified: boolean;
-}
-
-interface WorkosOrganization {
-  readonly id: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -68,13 +41,6 @@ function parseUser(value: unknown): WorkosUser | null {
   };
 }
 
-function organizationsFromList(value: unknown): readonly WorkosOrganization[] {
-  if (!isRecord(value) || !Array.isArray(value.data)) return [];
-  return value.data.flatMap((item): readonly WorkosOrganization[] =>
-    isRecord(item) && typeof item.id === "string" ? [{ id: item.id }] : [],
-  );
-}
-
 function membershipOrganizationId(value: unknown): string | null {
   if (!isRecord(value) || !Array.isArray(value.data)) return null;
   for (const item of value.data) {
@@ -88,38 +54,35 @@ function membershipOrganizationId(value: unknown): string | null {
   return null;
 }
 
-function organizationName(user: WorkosUser, domain: string | null): string {
-  if (domain !== null) return domain;
+function pendingInvitationOrganizationId(value: unknown): string | null {
+  if (!isRecord(value) || !Array.isArray(value.data)) return null;
+  for (const item of value.data) {
+    if (
+      isRecord(item) &&
+      item.state === "pending" &&
+      typeof item.organization_id === "string"
+    )
+      return item.organization_id;
+  }
+  return null;
+}
+
+function organizationName(user: WorkosUser): string {
   const personName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
   return `${personName === "" ? user.email : personName}'s Organization`;
 }
 
-async function createOrganization(
-  env: Env,
-  user: WorkosUser,
-  domain: string | null,
-): Promise<string> {
-  const body: Record<string, unknown> = {
-    name: organizationName(user, domain),
-    external_id: domain === null ? `ztunnel-user:${user.id}` : `ztunnel-domain:${domain}`,
-  };
-  if (domain !== null) body.domain_data = [{ domain, state: "pending" }];
+async function createPersonalOrganization(env: Env, user: WorkosUser): Promise<string> {
   const value = await workosRequest(env, "/organizations", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      name: organizationName(user),
+      external_id: `ztunnel-user:${user.id}`,
+    }),
   });
   if (!isRecord(value) || typeof value.id !== "string")
     throw new Error("WorkOS returned an invalid organization");
   return value.id;
-}
-
-async function organizationForDomain(env: Env, domain: string): Promise<string | null> {
-  const query = new URLSearchParams();
-  query.append("domains[]", domain);
-  const organizations = organizationsFromList(
-    await workosRequest(env, `/organizations?${query.toString()}`),
-  );
-  return organizations[0]?.id ?? null;
 }
 
 async function organizationForExternalId(env: Env, externalId: string): Promise<string | null> {
@@ -130,6 +93,17 @@ async function organizationForExternalId(env: Env, externalId: string): Promise<
     true,
   );
   return isRecord(value) && typeof value.id === "string" ? value.id : null;
+}
+
+// Only an explicit, admin-issued WorkOS invitation can place a user into an
+// existing organization. Matching on email domain alone would let any two
+// people who happen to share an email provider's domain end up in the same
+// org and see each other's tunnels.
+async function invitedOrganizationId(env: Env, email: string): Promise<string | null> {
+  const query = new URLSearchParams({ email });
+  return pendingInvitationOrganizationId(
+    await workosRequest(env, `/user_management/invitations?${query.toString()}`),
+  );
 }
 
 export async function ensureOrganizationForUser(env: Env, userId: string): Promise<string> {
@@ -147,25 +121,16 @@ export async function ensureOrganizationForUser(env: Env, userId: string): Promi
   const separator = user.email.lastIndexOf("@");
   if (separator <= 0 || separator === user.email.length - 1)
     throw new Error("WorkOS user has an invalid email address");
-  const emailDomain = user.email.slice(separator + 1).toLowerCase();
-  const organizationDomain =
-    user.email_verified && !PERSONAL_EMAIL_DOMAINS.has(emailDomain) ? emailDomain : null;
-  const externalId =
-    organizationDomain === null
-      ? `ztunnel-user:${user.id}`
-      : `ztunnel-domain:${organizationDomain}`;
+
+  const invited = user.email_verified ? await invitedOrganizationId(env, user.email) : null;
+  const externalId = `ztunnel-user:${user.id}`;
   let organizationId =
-    organizationDomain === null
-      ? await organizationForExternalId(env, externalId)
-      : await organizationForDomain(env, organizationDomain);
+    invited ?? (await organizationForExternalId(env, externalId));
   if (organizationId === null) {
     try {
-      organizationId = await createOrganization(env, user, organizationDomain);
+      organizationId = await createPersonalOrganization(env, user);
     } catch (error) {
-      organizationId =
-        organizationDomain === null
-          ? await organizationForExternalId(env, externalId)
-          : await organizationForDomain(env, organizationDomain);
+      organizationId = await organizationForExternalId(env, externalId);
       if (organizationId === null) throw error;
     }
   }

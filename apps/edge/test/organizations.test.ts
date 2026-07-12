@@ -27,14 +27,16 @@ describe("organization assignment", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
-  it("joins a verified custom-domain user to the matching organization", async () => {
+  it("joins a user with a pending invitation to the invited organization", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(response({ data: [] }))
       .mockResolvedValueOnce(
         response({ id: "user_1", email: "person@acme.test", email_verified: true }),
       )
-      .mockResolvedValueOnce(response({ data: [{ id: "org_acme" }] }))
+      .mockResolvedValueOnce(
+        response({ data: [{ state: "pending", organization_id: "org_acme" }] }),
+      )
       .mockResolvedValueOnce(response({ id: "membership_1" }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -42,6 +44,26 @@ describe("organization assignment", () => {
     expect(requestBody(fetchMock, 3)).toEqual({
       user_id: "user_1",
       organization_id: "org_acme",
+    });
+  });
+
+  it("does not join a shared-domain organization without an invitation", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response({ data: [] }))
+      .mockResolvedValueOnce(
+        response({ id: "user_1", email: "person@acme.test", email_verified: true }),
+      )
+      .mockResolvedValueOnce(response({ data: [] }))
+      .mockResolvedValueOnce(response(null, 404))
+      .mockResolvedValueOnce(response({ id: "org_personal" }))
+      .mockResolvedValueOnce(response({ id: "membership_1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(ensureOrganizationForUser(env, "user_1")).resolves.toBe("org_personal");
+    expect(requestBody(fetchMock, 4)).toEqual({
+      name: "person@acme.test's Organization",
+      external_id: "ztunnel-user:user_1",
     });
   });
 
@@ -57,13 +79,14 @@ describe("organization assignment", () => {
           first_name: "Ada",
         }),
       )
+      .mockResolvedValueOnce(response({ data: [] }))
       .mockResolvedValueOnce(response(null, 404))
       .mockResolvedValueOnce(response({ id: "org_personal" }))
       .mockResolvedValueOnce(response({ id: "membership_2" }));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(ensureOrganizationForUser(env, "user_2")).resolves.toBe("org_personal");
-    expect(requestBody(fetchMock, 3)).toEqual({
+    expect(requestBody(fetchMock, 4)).toEqual({
       name: "Ada's Organization",
       external_id: "ztunnel-user:user_2",
     });
