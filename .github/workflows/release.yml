@@ -31,6 +31,9 @@ jobs:
         run: |
           go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o mt ./cmd/tunnel
           tar -czf "mt-${GOOS}-${GOARCH}.tar.gz" mt
+          sha256sum "mt-${GOOS}-${GOARCH}.tar.gz" > "mt-${GOOS}-${GOARCH}.tar.gz.sha256"
       - uses: softprops/action-gh-release@v2
         with:
-          files: agents/tunnel/mt-*.tar.gz
+          files: |
+            agents/tunnel/mt-*.tar.gz
+            agents/tunnel/mt-*.tar.gz.sha256

@@ -8,6 +8,10 @@ export const SITE_METADATA = {
       title: "Makarima — tunnels for local development",
       path: "/",
     },
+    docs: {
+      title: "Docs — Makarima",
+      path: "/docs",
+    },
     terms: {
       title: "Terms of Service — Makarima",
       path: "/terms",
