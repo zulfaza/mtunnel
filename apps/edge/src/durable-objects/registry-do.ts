@@ -1,6 +1,11 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "../env.js";
 
+// A tunnel name that was claimed but never connected can be reclaimed by
+// another organization after this long, so abandoned claims don't squat on a
+// name forever.
+const IDLE_CLAIM_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 interface DomainRecord {
   readonly hostname: string;
   readonly tunnelId: string;
@@ -61,19 +66,33 @@ export class RegistryDO extends DurableObject<Env> {
     else await this.ctx.storage.put(key, connections);
   }
 
+  private async claimIsIdle(tunnelId: string, claimedAtKey: string): Promise<boolean> {
+    const claimedAt = await this.ctx.storage.get<number>(claimedAtKey);
+    if (claimedAt === undefined || Date.now() - claimedAt < IDLE_CLAIM_TTL_MS) return false;
+    const status = await this.env.TUNNELS.getByName(tunnelId).status(tunnelId);
+    return !status.connected && status.connectedAt === undefined;
+  }
+
   async claimTunnel(
     tunnelId: string,
     organizationId: string,
     legacyUserId?: string,
   ): Promise<boolean> {
     const key = `tunnel:${tunnelId}`;
+    const claimedAtKey = `tunnel-claimed-at:${tunnelId}`;
     const owner = await this.ctx.storage.get<string>(key);
     if (legacyUserId !== undefined && owner === legacyUserId) {
       await this.ctx.storage.put(key, organizationId);
+      await this.ctx.storage.put(claimedAtKey, Date.now());
       return true;
     }
-    if (owner !== undefined && owner !== organizationId) return false;
-    if (owner === undefined) await this.ctx.storage.put(key, organizationId);
+    if (owner !== undefined && owner !== organizationId) {
+      if (!(await this.claimIsIdle(tunnelId, claimedAtKey))) return false;
+    }
+    if (owner === undefined || owner !== organizationId) {
+      await this.ctx.storage.put(key, organizationId);
+      await this.ctx.storage.put(claimedAtKey, Date.now());
+    }
     return true;
   }
 
