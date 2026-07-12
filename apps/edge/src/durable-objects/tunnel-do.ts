@@ -327,9 +327,14 @@ export class TunnelDO extends DurableObject<Env> {
     }, this.limits.requestTimeoutMs) as unknown as number;
 
     const headers = stripHopByHopHeaderPairs(
-      headersToPairs(request.headers).filter(
-        ([name]: [string, string]) => !name.toLowerCase().startsWith("x-mtunnel-"),
-      ),
+      headersToPairs(request.headers).filter(([name]: [string, string]) => {
+        const lower = name.toLowerCase();
+        return (
+          !lower.startsWith("x-mtunnel-") &&
+          !lower.startsWith("x-forwarded-") &&
+          lower !== "x-tunnel-id"
+        );
+      }),
     );
     const url = new URL(request.url);
     headers.push(["x-forwarded-host", request.headers.get("host") ?? url.host]);
