@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zul/mtunnel/agents/tunnel/internal/protocol"
+	"github.com/zulfaza/mtunnel/agents/tunnel/internal/protocol"
 )
 
 func newTestDispatcher(t *testing.T, upstream string, timeout time.Duration) (*Dispatcher, <-chan protocol.Message, context.CancelFunc) {

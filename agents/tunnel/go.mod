@@ -1,4 +1,4 @@
-module github.com/zul/mtunnel/agents/tunnel
+module github.com/zulfaza/mtunnel/agents/tunnel
 
 go 1.25
 

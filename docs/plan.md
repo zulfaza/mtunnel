@@ -104,7 +104,7 @@ All done and verified:
 - [x] `packages/config` — default limits and TTL constants
 - [x] `packages/shared` — `TUNNEL_ID_PATTERN`, `isValidTunnelId`
 - [x] `apps/edge` — minimal Worker with `GET /health` → `{"status":"ok"}`, wrangler.jsonc (name `tunnel-edge`, compat date 2026-07-01, observability), `.dev.vars.example` (`AUTH_SECRET=development-token`, `DEV_ROUTING=true`, `TUNNEL_DOMAIN=tunnel.example.com`)
-- [x] `agents/tunnel` — Go module `github.com/zul/mtunnel/agents/tunnel` (go 1.25), Makefile (build/test/vet/clean), placeholder `main.go`
+- [x] `agents/tunnel` — Go module `github.com/zulfaza/mtunnel/agents/tunnel` (go 1.25), Makefile (build/test/vet/clean), placeholder `main.go`
 - [x] `.editorconfig`, `.gitignore`, `.env.example`, stub `README.md`
 
 Notes for successors: `pnpm-workspace.yaml` has `onlyBuiltDependencies`

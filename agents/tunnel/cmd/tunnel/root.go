@@ -14,8 +14,8 @@ import (
 
 	"github.com/lmittmann/tint"
 	"github.com/spf13/cobra"
-	"github.com/zul/mtunnel/agents/tunnel/internal/auth"
-	"github.com/zul/mtunnel/agents/tunnel/internal/config"
+	"github.com/zulfaza/mtunnel/agents/tunnel/internal/auth"
+	"github.com/zulfaza/mtunnel/agents/tunnel/internal/config"
 )
 
 type rootOptions struct {

@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zul/mtunnel/agents/tunnel/internal/auth"
-	"github.com/zul/mtunnel/agents/tunnel/internal/client"
-	"github.com/zul/mtunnel/agents/tunnel/internal/protocol"
-	"github.com/zul/mtunnel/agents/tunnel/internal/proxy"
+	"github.com/zulfaza/mtunnel/agents/tunnel/internal/auth"
+	"github.com/zulfaza/mtunnel/agents/tunnel/internal/client"
+	"github.com/zulfaza/mtunnel/agents/tunnel/internal/protocol"
+	"github.com/zulfaza/mtunnel/agents/tunnel/internal/proxy"
 )
 
 type Options struct {
