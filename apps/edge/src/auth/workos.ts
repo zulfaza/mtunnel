@@ -33,10 +33,7 @@ export async function authenticateUser(request: Request, env: Env): Promise<User
     const result = await jwtVerify(token, jwks, {
       issuer: env.WORKOS_ISSUER ?? "https://api.workos.com/",
     });
-    if (
-      result.payload.client_id !== env.WORKOS_CLIENT_ID ||
-      typeof result.payload.sub !== "string"
-    )
+    if (result.payload.client_id !== env.WORKOS_CLIENT_ID || typeof result.payload.sub !== "string")
       return { ok: false, status: 401 };
     userId = result.payload.sub;
   } catch {

@@ -18,7 +18,14 @@ import { tunnelIdFromDevPath, tunnelIdFromHost } from "./routing/index.js";
 import { stripInternalHeaders } from "./utils/headers.js";
 import { jsonError, jsonResponse } from "./utils/json.js";
 import { isValidTunnelId } from "@tunnel/shared";
-import { docsPage, errorPage, installScript, landingPage, siteManifest, termsPage } from "./pages.js";
+import {
+  docsPage,
+  errorPage,
+  installScript,
+  landingPage,
+  siteManifest,
+  termsPage,
+} from "./pages.js";
 
 const SITE_ASSET_PATHS = new Set([
   "/android-chrome-192x192.png",

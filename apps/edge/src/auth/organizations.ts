@@ -57,11 +57,7 @@ function membershipOrganizationId(value: unknown): string | null {
 function pendingInvitationOrganizationId(value: unknown): string | null {
   if (!isRecord(value) || !Array.isArray(value.data)) return null;
   for (const item of value.data) {
-    if (
-      isRecord(item) &&
-      item.state === "pending" &&
-      typeof item.organization_id === "string"
-    )
+    if (isRecord(item) && item.state === "pending" && typeof item.organization_id === "string")
       return item.organization_id;
   }
   return null;
@@ -124,8 +120,7 @@ export async function ensureOrganizationForUser(env: Env, userId: string): Promi
 
   const invited = user.email_verified ? await invitedOrganizationId(env, user.email) : null;
   const externalId = `ztunnel-user:${user.id}`;
-  let organizationId =
-    invited ?? (await organizationForExternalId(env, externalId));
+  let organizationId = invited ?? (await organizationForExternalId(env, externalId));
   if (organizationId === null) {
     try {
       organizationId = await createPersonalOrganization(env, user);

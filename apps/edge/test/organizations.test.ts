@@ -18,9 +18,11 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("organization assignment", () => {
   it("reuses the user's active organization membership", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      response({ data: [{ organization_id: "org_existing", status: "active" }] }),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        response({ data: [{ organization_id: "org_existing", status: "active" }] }),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(ensureOrganizationForUser(env, "user_1")).resolves.toBe("org_existing");
