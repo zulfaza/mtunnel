@@ -11,8 +11,9 @@ export default defineConfig({
       miniflare: {
         bindings: {
           TEST_MIGRATIONS: migrations,
-          AUTH_SECRET: "development-token",
+          AUTH_SECRET: "signing-secret",
           AUTH_MODE: "development",
+          DEV_AUTH_SECRET: "development-token",
           WORKOS_CLIENT_ID: "client_test",
           TUNNEL_DOMAIN: "worker.test",
           CUSTOM_DOMAIN_CNAME: "cname.worker.test",

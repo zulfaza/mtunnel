@@ -150,5 +150,8 @@ export async function verifyAgentToken(
 }
 
 export function timingSafeSecretEqual(provided: string, expected: string): boolean {
-  return crypto.subtle.timingSafeEqual(encoder.encode(provided), encoder.encode(expected));
+  const providedBytes = encoder.encode(provided);
+  const expectedBytes = encoder.encode(expected);
+  if (providedBytes.length !== expectedBytes.length) return false;
+  return crypto.subtle.timingSafeEqual(providedBytes, expectedBytes);
 }

@@ -1,6 +1,7 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { Env } from "../env.js";
 import { ensureOrganizationForUser } from "./organizations.js";
+import { timingSafeSecretEqual } from "./index.js";
 
 export type UserAuth =
   | { readonly ok: true; readonly userId: string; readonly organizationId: string }
@@ -14,7 +15,11 @@ function bearer(request: Request): string | null {
 export async function authenticateUser(request: Request, env: Env): Promise<UserAuth> {
   const token = bearer(request);
   if (token === null) return { ok: false, status: 401 };
-  if (env.AUTH_MODE === "development" && env.AUTH_SECRET !== undefined && token === env.AUTH_SECRET)
+  if (
+    env.AUTH_MODE === "development" &&
+    env.DEV_AUTH_SECRET !== undefined &&
+    timingSafeSecretEqual(token, env.DEV_AUTH_SECRET)
+  )
     return {
       ok: true,
       userId: "development-user",

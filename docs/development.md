@@ -18,7 +18,8 @@ pnpm build:agent
 ```
 
 Run the Worker with `pnpm dev:edge`. The development configuration uses
-`AUTH_SECRET=development-token`, path routing, and the URL form
+`DEV_AUTH_SECRET=development-token` (a login backdoor, distinct from the
+`AUTH_SECRET` that signs agent tokens), path routing, and the URL form
 `/t/<tunnel-id>/...`. Never reuse the development secret in a deployment.
 
 ## Quality checks

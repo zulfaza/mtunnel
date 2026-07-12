@@ -1,5 +1,6 @@
-AUTH_SECRET=development-token
+AUTH_SECRET=agent-token-signing-secret
 AUTH_MODE=development
+DEV_AUTH_SECRET=development-token
 WORKOS_CLIENT_ID=client_REPLACE_ME
 DEV_ROUTING=true
 TUNNEL_DOMAIN=worker.test

@@ -6,8 +6,10 @@ export interface Env {
   readonly TUNNELS: DurableObjectNamespace<TunnelDO>;
   readonly REGISTRY: DurableObjectNamespace<RegistryDO>;
   readonly DOMAINS: D1Database;
+  readonly AUTH_RATE_LIMITER: RateLimit;
   readonly AUTH_SECRET?: string;
   readonly AUTH_MODE?: string;
+  readonly DEV_AUTH_SECRET?: string;
   readonly WORKOS_CLIENT_ID: string;
   readonly WORKOS_API_KEY?: string;
   readonly WORKOS_ISSUER?: string;
