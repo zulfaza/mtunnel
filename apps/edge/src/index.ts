@@ -18,7 +18,7 @@ import { tunnelIdFromDevPath, tunnelIdFromHost } from "./routing/index.js";
 import { stripInternalHeaders } from "./utils/headers.js";
 import { jsonError, jsonResponse } from "./utils/json.js";
 import { isValidTunnelId } from "@tunnel/shared";
-import { errorPage, installScript, landingPage, siteManifest, termsPage } from "./pages.js";
+import { docsPage, errorPage, installScript, landingPage, siteManifest, termsPage } from "./pages.js";
 
 const SITE_ASSET_PATHS = new Set([
   "/android-chrome-192x192.png",
@@ -35,13 +35,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function validTokenBody(
-  value: unknown,
-): { readonly tunnelId: string; readonly sub: string } | null {
+function validTokenBody(value: unknown): { readonly tunnelId: string } | null {
   if (!isRecord(value)) return null;
   if (typeof value.tunnelId !== "string" || !isValidTunnelId(value.tunnelId)) return null;
-  if (value.sub !== undefined && typeof value.sub !== "string") return null;
-  return { tunnelId: value.tunnelId, sub: value.sub ?? "agent" };
+  return { tunnelId: value.tunnelId };
 }
 
 async function handleToken(request: Request, env: Env): Promise<Response> {
@@ -79,6 +76,9 @@ async function proxyWorkosAuth(
   env: Env,
   kind: "device" | "token" | "refresh",
 ): Promise<Response> {
+  const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const { success } = await env.AUTH_RATE_LIMITER.limit({ key: `${kind}:${clientIp}` });
+  if (!success) return jsonError(429, "rate_limited");
   let input: unknown;
   try {
     input = await request.json();
@@ -339,6 +339,7 @@ async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (request.method === "GET" && isPrimaryHost && SITE_ASSET_PATHS.has(url.pathname))
     return env.ASSETS.fetch(request);
   if (request.method === "GET" && url.pathname === "/" && isPrimaryHost) return landingPage();
+  if (request.method === "GET" && url.pathname === "/docs" && isPrimaryHost) return docsPage();
   if (request.method === "GET" && url.pathname === "/terms" && isPrimaryHost) return termsPage();
   if (request.method === "GET" && url.pathname === "/site.webmanifest" && isPrimaryHost)
     return siteManifest();
