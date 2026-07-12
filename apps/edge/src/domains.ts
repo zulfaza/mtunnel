@@ -1,5 +1,9 @@
 import type { Env } from "./env.js";
 
+// A hostname registered but never DNS-verified is released after this long, so
+// it can't be squatted on forever and block the real owner from claiming it.
+const PENDING_DOMAIN_TTL_MS = 72 * 60 * 60 * 1000;
+
 export type DomainStatus = "pending_dns" | "provisioning" | "active" | "failed";
 
 export interface DomainView {
@@ -103,6 +107,15 @@ function randomToken(): string {
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
 
+async function reapStaleDomain(env: Env, hostname: string): Promise<void> {
+  await env.DOMAINS.prepare(
+    `DELETE FROM custom_domains
+      WHERE hostname = ? AND status = 'pending_dns' AND created_at < ?`,
+  )
+    .bind(hostname, Date.now() - PENDING_DOMAIN_TTL_MS)
+    .run();
+}
+
 async function findDomain(env: Env, hostname: string): Promise<DomainRecord | null> {
   const value: unknown = await env.DOMAINS.prepare(
     `SELECT hostname, tunnel_id, organization_id, verification_token, status,
@@ -139,6 +152,7 @@ export async function addDomain(
     readonly maximumDomains: number | null;
   },
 ): Promise<DomainResult> {
+  await reapStaleDomain(env, input.hostname);
   const existing = await findDomain(env, input.hostname);
   if (existing === null && input.maximumDomains !== null) {
     const count = await env.DOMAINS.prepare(
