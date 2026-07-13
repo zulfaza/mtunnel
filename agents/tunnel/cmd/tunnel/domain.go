@@ -165,28 +165,28 @@ func executeDomainList(o *rootOptions) ([]domainResult, error) {
 	return results, nil
 }
 
-func resolveDomainHostname(o *rootOptions, hostnameOrTunnelName string) (string, string, error) {
+func resolveDomain(o *rootOptions, hostnameOrTunnelName string) (domainResult, error) {
 	domains, err := executeDomainList(o)
 	if err != nil {
-		return "", "", err
+		return domainResult{}, err
 	}
 	var matchedDomain domainResult
 	for _, domain := range domains {
 		if domain.Hostname == hostnameOrTunnelName {
-			return domain.Hostname, domain.Status, nil
+			return domain, nil
 		}
 		if domain.TunnelID != hostnameOrTunnelName {
 			continue
 		}
 		if matchedDomain.Hostname != "" {
-			return "", "", fmt.Errorf("tunnel name %q has multiple custom domains; use hostname", hostnameOrTunnelName)
+			return domainResult{}, fmt.Errorf("tunnel name %q has multiple custom domains; use hostname", hostnameOrTunnelName)
 		}
 		matchedDomain = domain
 	}
 	if matchedDomain.Hostname == "" {
-		return "", "", fmt.Errorf("custom domain or tunnel name %q not found", hostnameOrTunnelName)
+		return domainResult{}, fmt.Errorf("custom domain or tunnel name %q not found", hostnameOrTunnelName)
 	}
-	return matchedDomain.Hostname, matchedDomain.Status, nil
+	return matchedDomain, nil
 }
 
 func printDomainList(out io.Writer, domains []domainResult) error {
@@ -266,16 +266,23 @@ func newDomainCmd(o *rootOptions) *cobra.Command {
 			}
 			return printDNSInstructions(cmd.OutOrStdout(), result)
 		}},
+		&cobra.Command{Use: "detail <hostname-or-tunnel-name>", Short: "Show custom domain DNS records", Args: exactArgsWithHelp(1), RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := resolveDomain(o, args[0])
+			if err != nil {
+				return fmt.Errorf("get domain detail: %w", err)
+			}
+			return printDNSInstructions(cmd.OutOrStdout(), result)
+		}},
 		&cobra.Command{Use: "verify <hostname-or-tunnel-name>", Short: "Verify DNS and provision a custom domain", Args: exactArgsWithHelp(1), RunE: func(cmd *cobra.Command, args []string) error {
-			hostname, previousStatus, err := resolveDomainHostname(o, args[0])
+			domain, err := resolveDomain(o, args[0])
 			if err != nil {
 				return fmt.Errorf("verify domain: %w", err)
 			}
-			result, err := executeDomainRequest(o, http.MethodPost, "/api/v1/domains/"+url.PathEscape(hostname)+"/verify", nil)
+			result, err := executeDomainRequest(o, http.MethodPost, "/api/v1/domains/"+url.PathEscape(domain.Hostname)+"/verify", nil)
 			if err != nil {
 				return fmt.Errorf("verify domain: %w", err)
 			}
-			if previousStatus == "active" {
+			if domain.Status == "active" {
 				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Domain %s already verified. You can use it now.\n", result.Hostname)
 				return err
 			}
@@ -291,11 +298,11 @@ func newDomainCmd(o *rootOptions) *cobra.Command {
 			return err
 		}},
 		&cobra.Command{Use: "delete <hostname-or-tunnel-name>", Aliases: []string{"rm"}, Short: "Delete a custom domain", Args: exactArgsWithHelp(1), RunE: func(cmd *cobra.Command, args []string) error {
-			hostname, _, err := resolveDomainHostname(o, args[0])
+			domain, err := resolveDomain(o, args[0])
 			if err != nil {
 				return fmt.Errorf("delete domain: %w", err)
 			}
-			result, err := executeDomainRequest(o, http.MethodDelete, "/api/v1/domains/"+url.PathEscape(hostname), nil)
+			result, err := executeDomainRequest(o, http.MethodDelete, "/api/v1/domains/"+url.PathEscape(domain.Hostname), nil)
 			if err != nil {
 				return fmt.Errorf("delete domain: %w", err)
 			}

@@ -33,6 +33,7 @@ mt domain add dev-dash.upsell.is --name demo-tunnel
 Create the printed CNAME and TXT records, then verify and inspect provisioning:
 
 ```sh
+mt domain detail dev-dash.upsell.is
 mt domain verify dev-dash.upsell.is
 mt domain status dev-dash.upsell.is
 ```

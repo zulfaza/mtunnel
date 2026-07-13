@@ -125,6 +125,34 @@ func TestDomainListAndDelete(t *testing.T) {
 	}
 }
 
+func TestDomainDetailByTunnelName(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/domains" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`{"domains":[{"hostname":"app.upsell.is","tunnelId":"upsell","status":"pending_dns","cname":{"type":"CNAME","name":"app.upsell.is","value":"makarima.xyz"},"verification":{"type":"TXT","name":"_mtunnel.app.upsell.is","value":"mtunnel-verification=test"}}]}`))
+	}))
+	defer server.Close()
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := config.Save(configPath, config.Config{Server: server.URL, AccessToken: "access"}); err != nil {
+		t.Fatal(err)
+	}
+	cmd := newDomainCmd(&rootOptions{config: configPath})
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"detail", "upsell"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	expected := "Domain: app.upsell.is\nStatus: pending_dns\n\nCreate DNS records:\nCNAME app.upsell.is → makarima.xyz\nTXT _mtunnel.app.upsell.is → mtunnel-verification=test\n\nThen run:\nmt domain verify upsell\n"
+	if output.String() != expected {
+		t.Fatalf("unexpected detail output: %q", output.String())
+	}
+}
+
 func TestDomainDeleteByTunnelName(t *testing.T) {
 	var deletedPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
