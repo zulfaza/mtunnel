@@ -10,6 +10,10 @@
 - Avoid creative additions unless explicitly requested
 - Use full words for variable names (no abbreviations like "q" for "queue")
 
+## Before commit
+
+- Run `pnpm format:write` before every commit.
+
 ## Terminal and Agent First
 
 This application is terminal-first and agent-first. Design the terminal UI so agents can use it easily, with clear, predictable output and interaction flows. Every application interaction and capability must be available through the terminal; do not require a graphical interface to complete any workflow.

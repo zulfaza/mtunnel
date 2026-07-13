@@ -12,11 +12,7 @@ export async function handleTunnelStatus(
   if (!auth.ok) return authErrorResponse(auth);
   if (!isValidTunnelId(tunnelId)) return jsonError(400, "bad_request");
   if (
-    !(await env.REGISTRY.getByName("global").ownsTunnel(
-      tunnelId,
-      auth.organizationId,
-      auth.userId,
-    ))
+    !(await env.REGISTRY.getByName("global").ownsTunnel(tunnelId, auth.organizationId, auth.userId))
   )
     return jsonError(404, "not_found");
   return jsonResponse(await env.TUNNELS.getByName(tunnelId).status(tunnelId));
