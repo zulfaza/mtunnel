@@ -6,6 +6,7 @@ export interface Env {
   readonly TUNNELS: DurableObjectNamespace<TunnelDO>;
   readonly REGISTRY: DurableObjectNamespace<RegistryDO>;
   readonly DOMAINS: D1Database;
+  readonly PREVIEWS: R2Bucket;
   readonly AUTH_RATE_LIMITER: RateLimit;
   readonly PROXY_RATE_LIMITER: RateLimit;
   readonly AUTH_SECRET?: string;

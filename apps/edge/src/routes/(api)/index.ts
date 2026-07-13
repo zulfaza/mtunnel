@@ -13,6 +13,14 @@ import {
   handleDomainList,
 } from "./domains.js";
 import { handleOrganizationCreate, handleOrganizationList } from "./organizations.js";
+import {
+  handlePreviewDelete,
+  handlePreviewGet,
+  handlePreviewList,
+  handlePreviewUpload,
+  handlePreviewVisibilityUpdate,
+  previewLocation,
+} from "./previews.js";
 import { handleTunnelStatus } from "./tunnels.js";
 
 export async function handleApi(
@@ -37,6 +45,17 @@ export async function handleApi(
     return handleOrganizationList(request, env);
   if (request.method === "POST" && url.pathname === "/api/v1/organizations")
     return handleOrganizationCreate(request, env);
+  if (request.method === "POST" && url.pathname === "/api/v1/previews")
+    return handlePreviewUpload(request, env);
+  if (request.method === "GET" && url.pathname === "/api/v1/previews")
+    return handlePreviewList(request, env);
+  const requestedPreviewLocation = previewLocation(url.pathname);
+  if (request.method === "GET" && requestedPreviewLocation !== null)
+    return handlePreviewGet(request, env, requestedPreviewLocation);
+  if (request.method === "PATCH" && requestedPreviewLocation !== null)
+    return handlePreviewVisibilityUpdate(request, env, requestedPreviewLocation);
+  if (request.method === "DELETE" && requestedPreviewLocation !== null)
+    return handlePreviewDelete(request, env, requestedPreviewLocation);
   const requestedDomainHostname = domainHostname(url.pathname);
   if (request.method === "DELETE" && requestedDomainHostname !== null)
     return handleDomainDelete(request, env, requestedDomainHostname);

@@ -56,7 +56,7 @@ func newRootCmd() *cobra.Command {
 	flags.DurationVar(&o.requestTimeout, "request-timeout", 30*time.Second, "upstream request timeout")
 	flags.DurationVar(&o.idleTimeout, "idle-timeout", 15*time.Minute, "close tunnel after this long without a request (0 disables)")
 	flags.StringVar(&o.logLevel, "log-level", "info", "debug, info, warn, or error")
-	cmd.AddCommand(newLoginCmd(o), newHTTPCmd(o), newStatusCmd(o), newDomainCmd(o), newOrganizationCmd(o), newUpdateCmd(), newVersionCmd())
+	cmd.AddCommand(newLoginCmd(o), newHTTPCmd(o), newStatusCmd(o), newDomainCmd(o), newOrganizationCmd(o), newPreviewCmd(o), newUpdateCmd(), newVersionCmd())
 	return cmd
 }
 

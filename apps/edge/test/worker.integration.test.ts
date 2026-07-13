@@ -122,6 +122,109 @@ function respond(
 }
 
 describe("edge Worker routes", () => {
+  it("uploads HTML previews to R2 under the authenticated owner", async () => {
+    const form = new FormData();
+    form.set("file", new File(["<h1>Plan</h1>"], "plan.html", { type: "text/html" }));
+    const response = await SELF.fetch("http://worker.test/api/v1/previews", {
+      method: "POST",
+      headers: { authorization: "Bearer development-token" },
+      body: form,
+    });
+    expect(response.status).toBe(201);
+    const value: unknown = await response.json();
+    if (typeof value !== "object" || value === null || !("key" in value))
+      throw new Error("preview endpoint returned an invalid body");
+    if (typeof value.key !== "string") throw new Error("preview endpoint returned an invalid key");
+    expect(value.key).toMatch(
+      /^development-organization\/development-user\/\d{4}-\d{2}-\d{2}-plan\.html$/u,
+    );
+    if (!("url" in value) || typeof value.url !== "string")
+      throw new Error("preview endpoint returned an invalid URL");
+    expect(value.url).toMatch(
+      /^http:\/\/worker\.test\/api\/v1\/previews\/development-organization\/development-user\/\d{4}-\d{2}-\d{2}-plan\.html$/u,
+    );
+    const object = await env.PREVIEWS.get(value.key);
+    await expect(object?.text()).resolves.toBe("<h1>Plan</h1>");
+    const preview = await SELF.fetch(value.url, {
+      headers: { authorization: "Bearer development-token" },
+    });
+    await expect(preview.text()).resolves.toBe("<h1>Plan</h1>");
+  });
+
+  it("serves public previews without authentication", async () => {
+    const form = new FormData();
+    form.set("file", new File(["<h1>Public plan</h1>"], "plan.html", { type: "text/html" }));
+    form.set("visibility", "public");
+    const upload = await SELF.fetch("http://worker.test/api/v1/previews", {
+      method: "POST",
+      headers: { authorization: "Bearer development-token" },
+      body: form,
+    });
+    const value: unknown = await upload.json();
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("url" in value) ||
+      typeof value.url !== "string"
+    )
+      throw new Error("preview endpoint returned an invalid URL");
+    const preview = await SELF.fetch(value.url);
+    expect(preview.status).toBe(200);
+    await expect(preview.text()).resolves.toBe("<h1>Public plan</h1>");
+  });
+
+  it("lists, updates, and deletes organization previews", async () => {
+    const form = new FormData();
+    form.set("file", new File(["<h1>Plan</h1>"], "manage.html", { type: "text/html" }));
+    const upload = await SELF.fetch("http://worker.test/api/v1/previews", {
+      method: "POST",
+      headers: { authorization: "Bearer development-token" },
+      body: form,
+    });
+    const uploaded: unknown = await upload.json();
+    if (
+      typeof uploaded !== "object" ||
+      uploaded === null ||
+      !("key" in uploaded) ||
+      !("url" in uploaded) ||
+      typeof uploaded.key !== "string" ||
+      typeof uploaded.url !== "string"
+    )
+      throw new Error("preview endpoint returned an invalid body");
+    const list = await SELF.fetch("http://worker.test/api/v1/previews", {
+      headers: { authorization: "Bearer development-token" },
+    });
+    await expect(list.text()).resolves.toContain(uploaded.key);
+    const update = await SELF.fetch(uploaded.url, {
+      method: "PATCH",
+      headers: { authorization: "Bearer development-token", "content-type": "application/json" },
+      body: JSON.stringify({ visibility: "public" }),
+    });
+    await expect(update.json()).resolves.toMatchObject({ visibility: "public" });
+    expect((await SELF.fetch(uploaded.url)).status).toBe(200);
+    const deleted = await SELF.fetch(uploaded.url, {
+      method: "DELETE",
+      headers: { authorization: "Bearer development-token" },
+    });
+    expect(deleted.status).toBe(204);
+    expect((await SELF.fetch(uploaded.url)).status).toBe(404);
+  });
+
+  it("rejects previews larger than 5 MB", async () => {
+    const form = new FormData();
+    form.set(
+      "file",
+      new File([new Uint8Array(5 * 1024 * 1024 + 1)], "plan.html", { type: "text/html" }),
+    );
+    const response = await SELF.fetch("http://worker.test/api/v1/previews", {
+      method: "POST",
+      headers: { authorization: "Bearer development-token" },
+      body: form,
+    });
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({ error: "payload_too_large" });
+  });
+
   it("returns health", async () => {
     const response = await SELF.fetch("http://worker.test/health");
     await expect(response.json()).resolves.toEqual({ status: "ok" });
