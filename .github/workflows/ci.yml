@@ -54,6 +54,7 @@ jobs:
         with:
           go-version-file: agents/tunnel/go.mod
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - run: cp apps/edge/.dev.vars.example apps/edge/.dev.vars
       - run: pnpm build:agent
       - run: pnpm test:e2e
