@@ -34,10 +34,11 @@ type rootOptions struct {
 func newRootCmd() *cobra.Command {
 	o := &rootOptions{config: config.DefaultPath()}
 	cmd := &cobra.Command{
-		Use:               "mt",
-		Short:             "Expose a local HTTP server through mtunnel",
-		SilenceErrors:     true,
-		SilenceUsage:      true,
+		Use:           "mt",
+		Short:         "Expose a local HTTP server through mtunnel",
+		Version:       version,
+		SilenceErrors: true,
+		SilenceUsage:  true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if err := o.configureLogger(); err != nil {
 				return err
