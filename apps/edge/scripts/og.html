@@ -30,21 +30,6 @@
         padding: 0 80px;
         color: oklch(94% 0.004 84.58);
         background-color: oklch(21.5% 0.009 33.41);
-        background-image:
-          repeating-linear-gradient(
-            to right,
-            oklch(100% 0 0 / 0.07) 0,
-            oklch(100% 0 0 / 0.07) 1px,
-            transparent 1px,
-            transparent 44px
-          ),
-          repeating-linear-gradient(
-            to bottom,
-            oklch(100% 0 0 / 0.07) 0,
-            oklch(100% 0 0 / 0.07) 1px,
-            transparent 1px,
-            transparent 44px
-          );
         font-family: "Geist Mono", ui-monospace, monospace;
       }
 
@@ -69,10 +54,6 @@
         white-space: nowrap;
       }
 
-      .domain {
-        color: oklch(80% 0.1 150);
-      }
-
       .tagline {
         margin: 0 0 18px;
         font-size: 30px;
@@ -89,6 +70,20 @@
         line-height: 1.4;
       }
 
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+        height: 48px;
+        margin-top: 32px;
+        padding: 0 20px;
+        color: oklch(21.5% 0.009 33.41);
+        background: oklch(80% 0.1 150);
+        font-size: 17px;
+        font-weight: 650;
+        line-height: 1;
+      }
+
       svg {
         display: block;
         width: 460px;
@@ -100,9 +95,10 @@
   <body>
     <main>
       <section class="copy">
-        <h1 class="wordmark">makarima<span class="domain">.xyz</span></h1>
+        <h1 class="wordmark">mTunnel</h1>
         <p class="tagline">Your localhost, on the internet.</p>
         <p class="subline">tunnels for local development</p>
+        <div class="cta">Get started <span aria-hidden="true">→</span></div>
       </section>
 
       <svg viewBox="0 0 320 332" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">

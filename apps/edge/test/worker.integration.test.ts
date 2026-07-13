@@ -140,7 +140,7 @@ describe("edge Worker routes", () => {
     expect(favicon.headers.get("content-type")).toBe("image/vnd.microsoft.icon");
     const manifest = await SELF.fetch("http://worker.test/site.webmanifest");
     await expect(manifest.json()).resolves.toMatchObject({
-      name: "makarima.xyz",
+      name: "mTunnel",
       theme_color: "#fbfaf8",
     });
     const installer = await SELF.fetch("http://worker.test/install.sh");

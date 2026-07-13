@@ -1,19 +1,19 @@
 export const SITE_METADATA = {
-  name: "makarima.xyz",
+  name: "mTunnel",
   origin: "https://makarima.xyz",
   description: "A small, self-hosted development tunnel for exposing localhost through Cloudflare.",
   themeColor: "#fbfaf8",
   pages: {
     home: {
-      title: "Makarima — tunnels for local development",
+      title: "mTunnel — tunnels for local development",
       path: "/",
     },
     docs: {
-      title: "Docs — Makarima",
+      title: "Docs — mTunnel",
       path: "/docs",
     },
     terms: {
-      title: "Terms of Service — Makarima",
+      title: "Terms of Service — mTunnel",
       path: "/terms",
     },
   },
@@ -28,7 +28,7 @@ export const SITE_METADATA = {
   manifestPath: "/site.webmanifest",
   socialImage: {
     path: "/og.png",
-    alt: "makarima.xyz — Your localhost, on the internet.",
+    alt: "mTunnel — Your localhost, on the internet.",
     width: 1200,
     height: 630,
   },
