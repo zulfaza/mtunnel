@@ -1,3 +1,4 @@
+// oxlint-disable
 import { SITE_METADATA } from "../../site-metadata.js";
 
 const STYLE = `@font-face{font-family:"Geist Mono";font-style:normal;font-display:swap;font-weight:100 900;src:url(https://cdn.jsdelivr.net/fontsource/fonts/geist-mono:vf@latest/latin-wght-normal.woff2)format("woff2-variations")}
