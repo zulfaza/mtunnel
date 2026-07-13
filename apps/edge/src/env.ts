@@ -24,4 +24,6 @@ export interface Env {
   readonly MAX_RESPONSE_BYTES?: string;
   readonly HEARTBEAT_INTERVAL_MS?: string;
   readonly HEARTBEAT_TIMEOUT_MS?: string;
+  readonly POSTHOG_API_KEY?: string;
+  readonly POSTHOG_HOST?: string;
 }

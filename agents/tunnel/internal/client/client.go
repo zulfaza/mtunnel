@@ -27,17 +27,19 @@ type OpenFunc func(context.Context, protocol.HelloAck, SendFunc) func()
 type MessageFunc func(protocol.Message)
 
 type Options struct {
-	Server         string
-	Secret         string
-	RefreshToken   string
-	OnCredentials  func(auth.Credentials) error
-	TunnelID       string
-	AgentVersion   string
-	HTTPClient     *http.Client
-	Logger         *slog.Logger
-	InitialBackoff time.Duration
-	OnOpen         OpenFunc
-	OnMessage      MessageFunc
+	Server          string
+	Secret          string
+	RefreshToken    string
+	OnCredentials   func(auth.Credentials) error
+	TunnelID        string
+	AgentVersion    string
+	UsageSource     string
+	OperatingSystem string
+	HTTPClient      *http.Client
+	Logger          *slog.Logger
+	InitialBackoff  time.Duration
+	OnOpen          OpenFunc
+	OnMessage       MessageFunc
 }
 
 func Run(ctx context.Context, opts Options) error {
@@ -110,9 +112,13 @@ func runOnce(parent context.Context, opts Options) (protocol.HelloAck, error) {
 	if err != nil {
 		return protocol.HelloAck{}, err
 	}
+	headers := http.Header{"Authorization": []string{"Bearer " + token}}
+	headers.Set("X-Mtunnel-Usage-Source", opts.UsageSource)
+	headers.Set("X-Mtunnel-Operating-System", opts.OperatingSystem)
+	headers.Set("X-Mtunnel-Agent-Version", opts.AgentVersion)
 	conn, _, err := websocket.Dial(parent, wsURL, &websocket.DialOptions{
 		HTTPClient: opts.HTTPClient,
-		HTTPHeader: http.Header{"Authorization": []string{"Bearer " + token}},
+		HTTPHeader: headers,
 	})
 	if err != nil {
 		return protocol.HelloAck{}, fmt.Errorf("dial tunnel websocket: %w", err)

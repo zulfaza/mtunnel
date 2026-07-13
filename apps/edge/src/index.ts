@@ -14,6 +14,7 @@ import {
   type DomainResult,
 } from "./domains.js";
 import type { Env } from "./env.js";
+import { capture } from "./analytics.js";
 import { tunnelIdFromDevPath, tunnelIdFromHost } from "./routing/index.js";
 import { stripInternalHeaders } from "./utils/headers.js";
 import { jsonError, jsonResponse } from "./utils/json.js";
@@ -275,6 +276,7 @@ async function forwardConnect(
   env: Env,
   tunnelId: string,
   url: URL,
+  ctx: ExecutionContext,
 ): Promise<Response> {
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
     return jsonError(426, "upgrade_required");
@@ -309,6 +311,7 @@ async function forwardConnect(
   headers.set("x-mtunnel-public-origin", publicOrigin(url));
   headers.set("x-mtunnel-dev-routing", env.DEV_ROUTING === "true" ? "true" : "false");
   headers.set("x-mtunnel-organization-id", organizationId);
+  headers.set("x-mtunnel-user-id", verified.claims.sub);
   headers.set("x-mtunnel-connection-id", connectionId);
   headers.set("x-mtunnel-lifetime-seconds", String(limits.maximumTunnelLifetimeSeconds));
   headers.set("x-mtunnel-idle-seconds", String(limits.idleTimeoutSeconds));
@@ -321,6 +324,28 @@ async function forwardConnect(
   }
   if (response.status !== 101)
     await registry.releaseConnection(tunnelId, organizationId, connectionId);
+  else {
+    const cf = request.cf;
+    ctx.waitUntil(
+      capture(env, {
+        event: "tunnel connected",
+        distinctId: verified.claims.sub,
+        organizationId,
+        properties: {
+          $session_id: connectionId,
+          tunnel_id: tunnelId,
+          usage_source: request.headers.get("x-mtunnel-usage-source") ?? "terminal",
+          operating_system: request.headers.get("x-mtunnel-operating-system") ?? "unknown",
+          agent_version: request.headers.get("x-mtunnel-agent-version") ?? "unknown",
+          country: typeof cf?.country === "string" ? cf.country : undefined,
+          region: typeof cf?.region === "string" ? cf.region : undefined,
+          city: typeof cf?.city === "string" ? cf.city : undefined,
+          timezone: typeof cf?.timezone === "string" ? cf.timezone : undefined,
+          cloudflare_colo: typeof cf?.colo === "string" ? cf.colo : undefined,
+        },
+      }),
+    );
+  }
   return response;
 }
 
@@ -329,6 +354,7 @@ async function forwardProxy(
   env: Env,
   tunnelId: string,
   url: URL,
+  routeType: "standard_domain" | "custom_domain" | "development_path",
 ): Promise<Response> {
   const headers = stripInternalHeaders(request.headers);
   // Force the upstream to respond identity-encoded; the edge compresses for the
@@ -336,6 +362,7 @@ async function forwardProxy(
   // time, so the browser sees double-encoded garbage.
   headers.delete("accept-encoding");
   headers.set("x-mtunnel-id", tunnelId);
+  headers.set("x-mtunnel-route-type", routeType);
   return env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
 }
 
@@ -385,7 +412,7 @@ async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (request.method === "GET" && connect !== null) {
     const tunnelId = connect[1];
     if (tunnelId === undefined || !isValidTunnelId(tunnelId)) return jsonError(400, "bad_request");
-    return forwardConnect(request, env, tunnelId, url);
+    return forwardConnect(request, env, tunnelId, url, ctx);
   }
   const status = /^\/api\/v1\/tunnels\/([^/]+)\/status$/u.exec(url.pathname);
   if (request.method === "GET" && status !== null) {
@@ -409,17 +436,18 @@ async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise
   }
 
   const hostTunnelId = tunnelIdFromHost(request.headers.get("host"), env.TUNNEL_DOMAIN);
-  if (hostTunnelId !== null) return forwardProxy(request, env, hostTunnelId, url);
+  if (hostTunnelId !== null)
+    return forwardProxy(request, env, hostTunnelId, url, "standard_domain");
   const customTunnelId = await tunnelIdForDomain(env, hostname);
   if (customTunnelId !== null) {
     ctx.waitUntil(markDomainUsed(env, hostname));
-    return forwardProxy(request, env, customTunnelId, url);
+    return forwardProxy(request, env, customTunnelId, url, "custom_domain");
   }
   if (env.DEV_ROUTING === "true") {
     const route = tunnelIdFromDevPath(url.pathname);
     if (route !== null) {
       url.pathname = route.rewrittenPath;
-      return forwardProxy(request, env, route.tunnelId, url);
+      return forwardProxy(request, env, route.tunnelId, url, "development_path");
     }
   }
   return errorPage(404, "not_found", "This page does not exist, or the tunnel address is invalid.");
