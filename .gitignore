@@ -7,3 +7,4 @@ coverage
 agents/tunnel/bin
 .env
 *.tsbuildinfo
+/.agents/

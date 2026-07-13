@@ -1,0 +1,8 @@
+{
+  "tunnels": {
+    "preview": {
+      "port": 8787,
+      "hostname": "127.0.0.1"
+    }
+  }
+}

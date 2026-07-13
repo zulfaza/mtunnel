@@ -12,7 +12,6 @@ export interface Env {
   readonly DEV_AUTH_SECRET?: string;
   readonly WORKOS_CLIENT_ID: string;
   readonly WORKOS_API_KEY?: string;
-  readonly WORKOS_ISSUER?: string;
   readonly CLOUDFLARE_API_TOKEN?: string;
   readonly CLOUDFLARE_ZONE_ID?: string;
   readonly TUNNEL_DOMAIN: string;

@@ -2,12 +2,29 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestWaitForDeviceLoginStopsWhenAccessIsDenied(t *testing.T) {
+	server := newServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "access_denied"})
+	}))
+	defer server.Close()
+
+	_, err := WaitForDeviceLogin(context.Background(), server.Client(), server.URL, DeviceAuthorization{
+		DeviceCode: "device-code",
+		ExpiresIn:  5,
+	})
+	if err == nil || !strings.Contains(err.Error(), "denied") {
+		t.Fatalf("error = %v, want login denied", err)
+	}
+}
 
 func newServer(t *testing.T, handler http.Handler) *httptest.Server {
 	t.Helper()

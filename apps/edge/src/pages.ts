@@ -51,12 +51,29 @@ footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-betw
 footer p{font-size:12px;color:var(--muted-foreground)}
 .btn{display:inline-flex;align-items:center;height:1.75rem;padding:0 .625rem;border:1px solid var(--border);background:var(--background);color:var(--foreground);font-size:12px;font-weight:500;white-space:nowrap;text-decoration:none;transition:background-color .15s}
 .btn:hover{background:var(--muted)}
+.viz{display:none}
+.viz svg{display:block;width:100%;height:auto}
+.viz .network-spin{transform-origin:160px 166px;animation:network-spin 18s linear infinite}
+.viz .glb{fill:none;stroke:color-mix(in oklab,var(--foreground) 20%,transparent)}
+.viz .out{stroke:color-mix(in oklab,var(--foreground) 42%,transparent)}
+.viz .mer{fill:none;stroke:color-mix(in oklab,var(--foreground) 20%,transparent);animation:mer 18s linear infinite}
+.viz .arc{fill:none;stroke:color-mix(in oklab,var(--foreground) 34%,transparent)}
+.viz .dsh{stroke-dasharray:1.5 5;stroke-linecap:round}
+.viz .nd{fill:var(--foreground);animation:pulse 4s ease-in-out infinite}
+.viz .pkt{fill:var(--accent-text);animation:travel 1.6s ease-in-out infinite alternate}
+.viz .p1{offset-path:path("M62 96 Q112 66 160 52");animation-duration:1.7s}
+.viz .p2{offset-path:path("M148 140 Q182 168 210 190");animation-duration:1.35s;animation-delay:-1.1s}
+.viz .p3{offset-path:path("M254 246 Q216 292 160 286");animation-duration:2.1s;animation-delay:-.6s}
+@keyframes mer{0%{rx:140px;animation-timing-function:ease-in}50%{rx:1px;animation-timing-function:ease-out}100%{rx:140px}}
+@keyframes network-spin{to{transform:rotate(360deg)}}
+@keyframes travel{to{offset-distance:100%}}
+@keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}
 .reveal{opacity:0;animation:rise .5s cubic-bezier(.22,1,.36,1) forwards}
 .reveal:nth-child(2){animation-delay:.06s}.reveal:nth-child(3){animation-delay:.12s}.reveal:nth-child(4){animation-delay:.18s}.reveal:nth-child(5){animation-delay:.24s}
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-@media(prefers-reduced-motion:reduce){.reveal{animation:none;opacity:1}}
+@media(prefers-reduced-motion:reduce){.reveal{animation:none;opacity:1}.viz *{animation:none!important}.viz .pkt{display:none}}
 @media(min-width:640px){.bar{padding:.875rem 2rem}.hero{padding:3.25rem 2rem 3.5rem}section{padding:2rem}footer{padding:1rem 2rem}h1{font-size:2rem}.toc{padding:1.25rem 2rem}}
-@media(min-width:1024px){.cols{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}.cols section+section{border-top:0;border-left:1px solid var(--border-soft)}.docs{display:grid;grid-template-columns:15rem 1fr;align-items:start}.docs-body{border-left:1px solid var(--border-soft);min-height:100%}.toc{position:sticky;top:0;border-bottom:0;padding:2rem}.toc ol{flex-direction:column;gap:.5rem}}`;
+@media(min-width:1024px){.hero-split{display:grid;grid-template-columns:minmax(0,38rem) auto;align-items:center;gap:2rem}.viz{display:block;width:19rem;justify-self:end;margin-right:1rem}.cols{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}.cols section+section{border-top:0;border-left:1px solid var(--border-soft)}.docs{display:grid;grid-template-columns:15rem 1fr;align-items:start}.docs-body{border-left:1px solid var(--border-soft);min-height:100%}.toc{position:sticky;top:0;border-bottom:0;padding:2rem}.toc ol{flex-direction:column;gap:.5rem}}`;
 
 const COPY_SCRIPT = `(function(){var copyIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="0"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';var checkIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';document.querySelectorAll(".code").forEach(function(block){var btn=document.createElement("button");btn.className="copy";btn.type="button";btn.innerHTML=copyIcon;btn.setAttribute("aria-label","Copy commands");btn.addEventListener("click",function(){var text=Array.prototype.map.call(block.querySelectorAll("b"),function(b){return b.textContent}).join("\\n");navigator.clipboard.writeText(text).then(function(){btn.innerHTML=checkIcon;btn.setAttribute("data-done","");setTimeout(function(){btn.innerHTML=copyIcon;btn.removeAttribute("data-done")},1500)}).catch(function(){})});block.appendChild(btn)})})()`;
 
@@ -77,21 +94,21 @@ function page(metadata: PageMetadata, body: string, status: number = 200): Respo
   );
 }
 
-function bar(navLinks: string): string {
-  return `<div class="bar reveal"><a class="brand" href="https://makarima.xyz">makarima<em>.xyz</em></a><nav aria-label="Primary navigation">${navLinks}</nav></div>`;
+function bar(): string {
+  return `<div class="bar reveal"><a class="brand" href="https://makarima.xyz">makarima<em>.xyz</em></a><nav aria-label="Primary navigation"><a href="https://makarima.xyz/docs">docs</a><a href="https://github.com/zul/mtunnel" rel="noreferrer" target="_blank">github</a></nav></div>`;
 }
 
 function footer(): string {
   return `<footer class="reveal"><p>Copyright © 2026 makarima.xyz</p><div class="footer-links"><a class="btn" href="https://makarima.xyz/docs">Docs</a><a class="btn" href="https://makarima.xyz/terms">Terms</a><a class="btn" href="https://github.com/zul/mtunnel" rel="noreferrer" target="_blank">GitHub</a></div></footer>`;
 }
 
+const HERO_GLOBE = `<figure class="viz" aria-hidden="true"><svg viewBox="0 0 320 332" xmlns="http://www.w3.org/2000/svg" focusable="false"><g transform="rotate(-14 160 166)"><circle class="glb out" cx="160" cy="166" r="140"/><ellipse class="glb" cx="160" cy="166" rx="140" ry="36"/><ellipse class="glb" cx="160" cy="102" rx="124" ry="31"/><ellipse class="glb" cx="160" cy="230" rx="124" ry="31"/><ellipse class="glb" cx="160" cy="58" rx="89" ry="22"/><ellipse class="glb" cx="160" cy="274" rx="89" ry="22"/><ellipse class="mer" cx="160" cy="166" rx="140" ry="140"/><ellipse class="mer" cx="160" cy="166" rx="140" ry="140" style="animation-delay:-3.6s"/><ellipse class="mer" cx="160" cy="166" rx="140" ry="140" style="animation-delay:-7.2s"/><ellipse class="mer" cx="160" cy="166" rx="140" ry="140" style="animation-delay:-10.8s"/><ellipse class="mer" cx="160" cy="166" rx="140" ry="140" style="animation-delay:-14.4s"/><g class="network-spin"><path class="arc" d="M62 96Q112 66 160 52"/><path class="arc" d="M160 52Q192 78 244 84"/><path class="arc dsh" d="M244 84Q292 116 286 160"/><path class="arc" d="M286 160Q294 212 254 246"/><path class="arc" d="M254 246Q216 292 160 286"/><path class="arc dsh" d="M160 286Q102 282 70 238"/><path class="arc" d="M70 238Q34 208 40 170"/><path class="arc" d="M40 170Q38 122 62 96"/><path class="arc" d="M62 96Q108 128 148 140"/><path class="arc" d="M148 140Q182 168 210 190"/><path class="arc" d="M210 190Q236 214 254 246"/><path class="arc" d="M148 140Q198 118 244 84"/><path class="arc" d="M108 190Q126 166 148 140"/><path class="arc" d="M70 238Q86 212 108 190"/><path class="arc" d="M205 120Q178 130 148 140"/><path class="arc dsh" d="M205 120Q248 138 286 160"/><circle class="nd" cx="62" cy="96" r="4"/><circle class="nd" cx="160" cy="52" r="3" style="animation-delay:-.5s"/><circle class="nd" cx="244" cy="84" r="3.5" style="animation-delay:-1s"/><circle class="nd" cx="286" cy="160" r="3" style="animation-delay:-1.5s"/><circle class="nd" cx="254" cy="246" r="3.5" style="animation-delay:-2s"/><circle class="nd" cx="160" cy="286" r="3" style="animation-delay:-2.5s"/><circle class="nd" cx="70" cy="238" r="4" style="animation-delay:-3s"/><circle class="nd" cx="40" cy="170" r="3" style="animation-delay:-3.5s"/><circle class="nd" cx="148" cy="140" r="4.5" style="animation-delay:-1.2s"/><circle class="nd" cx="210" cy="190" r="3" style="animation-delay:-2.2s"/><circle class="nd" cx="108" cy="190" r="2.5" style="animation-delay:-3.2s"/><circle class="nd" cx="205" cy="120" r="2.5" style="animation-delay:-.8s"/><circle class="pkt p1" r="2.2"/><circle class="pkt p2" r="2.2"/><circle class="pkt p3" r="2.2"/></g></g></svg></figure>`;
+
 export function landingPage(): Response {
   return page(
     SITE_METADATA.pages.home,
-    bar(
-      `<a href="#install">Install</a><a href="#use">Use</a><a href="https://makarima.xyz/docs">Docs</a><a href="https://github.com/zul/mtunnel" rel="noreferrer" target="_blank">GitHub</a>`,
-    ) +
-      `<header class="hero reveal"><h1>Your localhost, on the internet.</h1><p class="lede">One command opens a <b>tunnel</b>: the CLI holds a WebSocket to Cloudflare's edge, a Durable Object routes public requests down it to your machine, and responses stream back. Sign in with Google from the terminal, get a stable subdomain, and idle tunnels shut themselves down.</p></header><div class="cols reveal"><section id="install"><h2>Install</h2><div class="code"><i>$ </i><b>curl https://makarima.xyz/install.sh | sh</b></div><p>Drops a single static binary in <code>~/.local/bin</code> (Linux &amp; macOS, amd64 &amp; arm64). No runtime dependencies.</p></section><section id="use"><h2>Use</h2><div class="code"><i>$ </i><b>mt login</b><i>                      # sign in with Google</i><br><i>$ </i><b>mt http 3000</b><i>                  # expose localhost:3000</i><br><i>$ </i><b>mt http 3000 --name demo</b><i>      # stable subdomain</i></div><ul><li><code>mt status</code> — connection state and public URL</li><li><code>mt domain add &lt;hostname&gt; --name &lt;tunnel&gt;</code> — route a custom domain to a tunnel</li><li><code>mt update</code> — self-update to the latest release</li></ul><p>Full command reference and feature guide in the <a href="https://makarima.xyz/docs">docs</a>.</p></section></div>` +
+    bar() +
+      `<header class="hero hero-split reveal"><div><h1>Your localhost, on the internet.</h1><p class="lede">One command opens a <b>tunnel</b>: the CLI holds a WebSocket to Cloudflare's edge, a Durable Object routes public requests down it to your machine, and responses stream back. Sign in with Google from the terminal, get a stable subdomain, and idle tunnels shut themselves down.</p></div>${HERO_GLOBE}</header><div class="cols reveal"><section id="install"><h2>Install</h2><div class="code"><i>$ </i><b>curl https://makarima.xyz/install.sh | sh</b></div><p>Drops a single static binary in <code>~/.local/bin</code> (Linux &amp; macOS, amd64 &amp; arm64). No runtime dependencies.</p></section><section id="use"><h2>Use</h2><div class="code"><i>$ </i><b>mt login</b><i>                      # sign in with Google</i><br><i>$ </i><b>mt http 3000</b><i>                  # expose localhost:3000</i><br><i>$ </i><b>mt http 3000 --name demo</b><i>      # stable subdomain</i></div><ul><li><code>mt status</code> — connection state and public URL</li><li><code>mt domain add &lt;hostname&gt; --name &lt;tunnel&gt;</code> — route a custom domain to a tunnel</li><li><code>mt update</code> — self-update to the latest release</li></ul><p>Full command reference and feature guide in the <a href="https://makarima.xyz/docs">docs</a>.</p></section></div>` +
       footer(),
   );
 }
@@ -99,9 +116,7 @@ export function landingPage(): Response {
 export function docsPage(): Response {
   return page(
     SITE_METADATA.pages.docs,
-    bar(
-      `<a href="https://makarima.xyz/#install">Install</a><a href="https://makarima.xyz/#use">Use</a><a href="https://makarima.xyz/docs">Docs</a><a href="https://github.com/zul/mtunnel" rel="noreferrer" target="_blank">GitHub</a>`,
-    ) +
+    bar() +
       `<header class="hero reveal"><h1>Docs</h1><p class="lede">Everything the <b>mt</b> CLI and the makarima.xyz edge can do: tunnels, named subdomains, project config, custom domains, and the limits that apply to your organization.</p></header><div class="docs reveal"><aside class="toc"><h2>On this page</h2><ol><li><a href="#install">Install &amp; update</a></li><li><a href="#auth">Sign in</a></li><li><a href="#tunnels">Tunnels</a></li><li><a href="#config">Config files</a></li><li><a href="#domains">Custom domains</a></li><li><a href="#limits">Limits</a></li><li><a href="#how">How it works</a></li></ol></aside><div class="docs-body">` +
       `<section id="install"><h2>Install &amp; update</h2><div class="code"><i>$ </i><b>curl https://makarima.xyz/install.sh | sh</b></div><p>Installs a single static <code>mt</code> binary to <code>~/.local/bin</code> (override with <code>INSTALL_DIR</code>). Linux and macOS, amd64 and arm64. <code>mt update</code> re-runs the installer to fetch the latest release; <code>mt version</code> prints the installed version.</p></section>` +
       `<section id="auth"><h2>Sign in</h2><div class="code"><i>$ </i><b>mt login</b></div><p>Starts a WorkOS device-authorization flow: the CLI prints a URL and code, you approve it in the browser with your Google account, and tokens are stored in the CLI config. Access tokens refresh automatically while a tunnel is running. Each account belongs to an organization, which owns its tunnels and domains.</p></section>` +
@@ -118,9 +133,7 @@ export function docsPage(): Response {
 export function termsPage(): Response {
   return page(
     SITE_METADATA.pages.terms,
-    bar(
-      `<a href="https://makarima.xyz">Home</a><a href="https://makarima.xyz/docs">Docs</a><a href="https://github.com/zul/mtunnel" rel="noreferrer" target="_blank">GitHub</a>`,
-    ) +
+    bar() +
       `<header class="hero reveal"><h1>Terms of Service</h1><p class="lede">Makarima is a development tunnel service that exposes a local HTTP server on the internet. By creating an account or opening a tunnel, you agree to these terms.</p></header><div class="grow reveal"><section><h2>The service</h2><p>The <code>mt</code> CLI connects your machine to Cloudflare's edge and routes public requests on a <code>makarima.xyz</code> subdomain (or a custom domain you configure) to a local port you choose. The service is intended for development and testing, not for hosting production workloads.</p></section><section><h2>Accounts</h2><p>You sign in with a Google account through WorkOS. Each account belongs to an organization, which owns its tunnels and domains. We store the minimum needed to operate the service: your account and organization identifiers, email address, and the tunnels and domains you register. You are responsible for activity that happens through your account and tunnels.</p></section><section><h2>Acceptable use</h2><p>Traffic through your tunnel is your responsibility. Don't use the service to distribute malware, phish, infringe copyright, evade network policies you are bound by, or expose services you don't have the right to expose. Custom domains may only be added for hostnames you control. We may block traffic or close tunnels that abuse the service or burden the network.</p></section><section><h2>Availability</h2><p>The service is provided on a best-effort basis with no uptime guarantee. Usage limits apply per organization (see the <a href="https://makarima.xyz/docs">docs</a>): idle and long-running tunnels are shut down automatically, concurrent tunnels and custom domains are capped, and subdomain assignments may change unless you use a named tunnel. We may change or discontinue the service at any time.</p></section><section><h2>Privacy</h2><p>Tunnel traffic passes through Cloudflare and is forwarded to your machine; we do not store request or response bodies. Operational logs (connection metadata, error events) are kept only as long as needed to run and debug the service.</p></section><section><h2>Termination</h2><p>You can stop using the service at any time; closing your tunnels and deleting the CLI removes your access. We may suspend or terminate accounts that violate these terms.</p></section><section><h2>Disclaimer</h2><p>The service and the CLI are provided "as is", without warranty of any kind. To the maximum extent permitted by law, makarima.xyz is not liable for damages arising from use of the service, including data loss or exposure of services you tunnel.</p></section><section><h2>Changes</h2><p>We may update these terms; the current version is always at <code>makarima.xyz/terms</code>. Continued use after a change means you accept these terms. Questions: open an issue on <a href="https://github.com/zul/mtunnel" rel="noreferrer" target="_blank">GitHub</a>.</p></section></div>` +
       footer(),
   );
@@ -129,7 +142,7 @@ export function termsPage(): Response {
 export function errorPage(status: number, code: string, detail: string): Response {
   return page(
     { title: `${status} — Makarima`, path: "/" },
-    bar(`<a href="https://makarima.xyz">Home</a>`) +
+    bar() +
       `<section class="grow reveal"><h2>Error</h2><h1 class="error-status">${status}</h1><p>${detail}</p><small class="error-code">${code}</small></section>` +
       footer(),
     status,

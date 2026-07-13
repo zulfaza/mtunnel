@@ -125,7 +125,7 @@ exponential backoff after an unexpected disconnect.
 
 ```sh
 pnpm lint
-pnpm format --check
+pnpm format
 pnpm typecheck
 pnpm test
 pnpm build

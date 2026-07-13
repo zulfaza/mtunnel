@@ -39,7 +39,7 @@
   "vars": {
     "TUNNEL_DOMAIN": "makarima.xyz",
     "CUSTOM_DOMAIN_CNAME": "cname.makarima.xyz",
-    "WORKOS_CLIENT_ID": "client_01K65Z0KC2ADHQJQ179WCEJ0KG",
+    "WORKOS_CLIENT_ID": "client_01K65Z0KMSGX9H9XQDN5TECBYD",
     "DEV_ROUTING": "false",
     "REQUEST_TIMEOUT_MS": "30000",
     "MAX_PENDING_REQUESTS": "32",
@@ -47,8 +47,7 @@
     "MAX_RESPONSE_BYTES": "104857600",
     "HEARTBEAT_INTERVAL_MS": "20000",
     "HEARTBEAT_TIMEOUT_MS": "60000",
-    "WORKOS_ISSUER": "https://api.workos.com/user_management/client_01K65Z0KC2ADHQJQ179WCEJ0KG",
-    "POSTHOG_HOST": "https://us.i.posthog.com",
+    "POSTHOG_HOST": "https://eu.i.posthog.com",
   },
   // Secrets: AUTH_SECRET, WORKOS_API_KEY, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID, POSTHOG_API_KEY
   "routes": [

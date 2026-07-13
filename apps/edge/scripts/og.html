@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1200, initial-scale=1" />
+    <style>
+      @font-face {
+        font-family: "Geist Mono";
+        src: url("https://cdn.jsdelivr.net/fontsource/fonts/geist-mono:vf@latest/latin-wght-normal.woff2")
+          format("woff2-variations");
+        font-weight: 100 900;
+        font-display: swap;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        display: flex;
+        align-items: center;
+        padding: 0 80px;
+        color: oklch(94% 0.004 84.58);
+        background-color: oklch(21.5% 0.009 33.41);
+        background-image:
+          repeating-linear-gradient(
+            to right,
+            oklch(100% 0 0 / 0.07) 0,
+            oklch(100% 0 0 / 0.07) 1px,
+            transparent 1px,
+            transparent 44px
+          ),
+          repeating-linear-gradient(
+            to bottom,
+            oklch(100% 0 0 / 0.07) 0,
+            oklch(100% 0 0 / 0.07) 1px,
+            transparent 1px,
+            transparent 44px
+          );
+        font-family: "Geist Mono", ui-monospace, monospace;
+      }
+
+      main {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+      }
+
+      .copy {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .wordmark {
+        margin: 0 0 48px;
+        font-size: 64px;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -4px;
+        white-space: nowrap;
+      }
+
+      .domain {
+        color: oklch(80% 0.1 150);
+      }
+
+      .tagline {
+        margin: 0 0 18px;
+        font-size: 30px;
+        font-weight: 500;
+        line-height: 1.25;
+        white-space: nowrap;
+      }
+
+      .subline {
+        margin: 0;
+        color: oklch(72% 0.007 70.08);
+        font-size: 20px;
+        font-weight: 400;
+        line-height: 1.4;
+      }
+
+      svg {
+        display: block;
+        width: 460px;
+        height: 460px;
+        flex: 0 0 460px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="copy">
+        <h1 class="wordmark">makarima<span class="domain">.xyz</span></h1>
+        <p class="tagline">Your localhost, on the internet.</p>
+        <p class="subline">tunnels for local development</p>
+      </section>
+
+      <svg viewBox="0 0 320 332" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g transform="rotate(-14 160 166)" fill="none" stroke-width="1">
+          <circle cx="160" cy="166" r="140" stroke="oklch(94% .004 84.58 / .42)" />
+          <g stroke="oklch(94% .004 84.58 / .20)">
+            <ellipse cx="160" cy="166" rx="140" ry="36" />
+            <ellipse cx="160" cy="102" rx="124" ry="31" />
+            <ellipse cx="160" cy="230" rx="124" ry="31" />
+            <ellipse cx="160" cy="58" rx="89" ry="22" />
+            <ellipse cx="160" cy="274" rx="89" ry="22" />
+            <ellipse cx="160" cy="166" rx="140" ry="140" />
+            <ellipse cx="160" cy="166" rx="96" ry="140" />
+            <ellipse cx="160" cy="166" rx="40" ry="140" />
+          </g>
+          <g stroke="oklch(94% .004 84.58 / .34)">
+            <path d="M62 96 Q112 66 160 52" />
+            <path d="M160 52 Q192 78 244 84" />
+            <path d="M244 84 Q292 116 286 160" stroke-dasharray="1.5 5" stroke-linecap="round" />
+            <path d="M286 160 Q294 212 254 246" />
+            <path d="M254 246 Q216 292 160 286" />
+            <path d="M160 286 Q102 282 70 238" stroke-dasharray="1.5 5" stroke-linecap="round" />
+            <path d="M70 238 Q34 208 40 170" />
+            <path d="M40 170 Q38 122 62 96" />
+            <path d="M62 96 Q108 128 148 140" />
+            <path d="M148 140 Q182 168 210 190" />
+            <path d="M210 190 Q236 214 254 246" />
+            <path d="M148 140 Q198 118 244 84" />
+            <path d="M108 190 Q126 166 148 140" />
+            <path d="M70 238 Q86 212 108 190" />
+            <path d="M205 120 Q178 130 148 140" />
+            <path d="M205 120 Q248 138 286 160" stroke-dasharray="1.5 5" stroke-linecap="round" />
+          </g>
+
+          <g fill="oklch(94% .004 84.58)" stroke="none">
+            <circle cx="62" cy="96" r="4" />
+            <circle cx="160" cy="52" r="3" />
+            <circle cx="244" cy="84" r="3.5" />
+            <circle cx="286" cy="160" r="3" />
+            <circle cx="254" cy="246" r="3.5" />
+            <circle cx="160" cy="286" r="3" />
+            <circle cx="70" cy="238" r="4" />
+            <circle cx="40" cy="170" r="3" />
+            <circle cx="148" cy="140" r="4.5" />
+            <circle cx="210" cy="190" r="3" />
+            <circle cx="108" cy="190" r="2.5" />
+            <circle cx="205" cy="120" r="2.5" />
+          </g>
+
+          <g fill="oklch(80% .1 150)" stroke="none">
+            <circle cx="126" cy="64" r="2.6" />
+            <circle cx="190" cy="174" r="2.6" />
+            <circle cx="197" cy="284" r="2.6" />
+          </g>
+        </g>
+      </svg>
+    </main>
+  </body>
+</html>

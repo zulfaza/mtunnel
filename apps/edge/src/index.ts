@@ -14,7 +14,7 @@ import {
   type DomainResult,
 } from "./domains.js";
 import type { Env } from "./env.js";
-import { capture } from "./analytics.js";
+import { capture, type AnalyticsProperties } from "./analytics.js";
 import { tunnelIdFromDevPath, tunnelIdFromHost } from "./routing/index.js";
 import { stripInternalHeaders } from "./utils/headers.js";
 import { jsonError, jsonResponse } from "./utils/json.js";
@@ -366,7 +366,7 @@ async function forwardProxy(
   return env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
 }
 
-async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const hostname = url.hostname.toLowerCase();
   const isPrimaryHost = hostname === env.TUNNEL_DOMAIN.toLowerCase();
@@ -451,6 +451,64 @@ async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise
     }
   }
   return errorPage(404, "not_found", "This page does not exist, or the tunnel address is invalid.");
+}
+
+interface TrackedEvent {
+  readonly event: string;
+  readonly properties?: AnalyticsProperties;
+}
+
+function trackedEvent(request: Request, env: Env): TrackedEvent | null {
+  const url = new URL(request.url);
+  const isPrimaryHost = url.hostname.toLowerCase() === env.TUNNEL_DOMAIN.toLowerCase();
+  if (request.method === "GET" && isPrimaryHost) {
+    const page = new Map([
+      ["/", "home"],
+      ["/docs", "docs"],
+      ["/terms", "terms"],
+    ]).get(url.pathname);
+    if (page !== undefined) return { event: "site_page_viewed", properties: { page } };
+    if (url.pathname === "/install.sh") return { event: "installer_downloaded" };
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/auth/device")
+    return { event: "device_authorization_started" };
+  if (request.method === "POST" && url.pathname === "/api/v1/auth/token")
+    return { event: "tunnel_claim_requested" };
+  if (request.method === "POST" && url.pathname === "/api/v1/domains")
+    return { event: "custom_domain_add_requested" };
+  if (request.method === "DELETE" && domainHostname(url.pathname) !== null)
+    return { event: "custom_domain_delete_requested" };
+  const domainRequest = domainAction(url.pathname);
+  if (
+    domainRequest !== null &&
+    ((request.method === "POST" && domainRequest.action === "verify") ||
+      (request.method === "GET" && domainRequest.action === "status"))
+  )
+    return {
+      event: "custom_domain_action_requested",
+      properties: { action: domainRequest.action },
+    };
+  if (request.method === "GET" && /^\/api\/v1\/tunnels\/[^/]+\/connect$/u.test(url.pathname))
+    return { event: "tunnel_connection_requested" };
+  return null;
+}
+
+async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const analyticsEvent = trackedEvent(request, env);
+  const response = await handleRequest(request, env, ctx);
+  if (analyticsEvent !== null) {
+    ctx.waitUntil(
+      capture(env, {
+        ...analyticsEvent,
+        properties: {
+          ...analyticsEvent.properties,
+          status: response.status,
+          success: response.status < 400,
+        },
+      }),
+    );
+  }
+  return response;
 }
 
 export { RegistryDO, TunnelDO };

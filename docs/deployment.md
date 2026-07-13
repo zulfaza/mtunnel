@@ -9,11 +9,12 @@ SaaS enabled on the `makarima.xyz` zone. Configure an active fallback origin.
 
 Edit `apps/edge/wrangler.jsonc`:
 
-1. Set `TUNNEL_DOMAIN=makarima.xyz`, `CUSTOM_DOMAIN_CNAME=cname.makarima.xyz`, and replace `WORKOS_CLIENT_ID`.
+1. Set `TUNNEL_DOMAIN=makarima.xyz`, `CUSTOM_DOMAIN_CNAME=cname.makarima.xyz`, and replace `WORKOS_CLIENT_ID` with the production application Client ID. The Worker derives the token issuer as `https://api.workos.com/user_management/<WORKOS_CLIENT_ID>`.
 2. Review request, response, pending-request, timeout, and heartbeat limits.
 3. Replace the placeholder route comments with routes for the base and wildcard
    hostnames appropriate to your zone.
-4. Keep `DEV_ROUTING=false` in production.
+4. Keep `DEV_ROUTING=false`, leave `AUTH_MODE` unset, and never configure
+   `DEV_AUTH_SECRET` in production.
 
 Create a high-entropy root secret and upload it without putting it in source:
 
@@ -24,9 +25,18 @@ pnpm exec wrangler secret put AUTH_SECRET
 pnpm exec wrangler secret put WORKOS_API_KEY
 pnpm exec wrangler secret put CLOUDFLARE_API_TOKEN
 pnpm exec wrangler secret put CLOUDFLARE_ZONE_ID
+pnpm exec wrangler secret put POSTHOG_API_KEY
 ```
 
 The Cloudflare API token needs `SSL and Certificates Write` for the tunnel zone.
+
+`POSTHOG_API_KEY` is optional. Use the project token, not a personal API key. When
+present, the Worker sends anonymous aggregate product events to `POSTHOG_HOST`.
+The configured host is the EU ingestion endpoint for project 222539. Analytics
+delivery is asynchronous and never changes request responses. It excludes
+tunneled traffic, URLs, headers, IP addresses, user and organization IDs, tunnel
+names, and request bodies. Each event uses a new random distinct ID with
+person-profile processing and GeoIP enrichment disabled.
 
 Create the D1 database and copy its ID into `wrangler.jsonc`:
 
@@ -37,8 +47,20 @@ pnpm exec wrangler d1 create mtunnel-domains
 The deployment command applies all pending remote D1 migrations before
 deploying the Worker. If a migration fails, the Worker is not deployed.
 
-Enable AuthKit CLI Auth and Google OAuth in WorkOS. `AUTH_SECRET` signs only
-short-lived internal agent tokens; users never receive it.
+In the WorkOS production environment:
+
+1. Unlock production and create or select the production application.
+2. Enable AuthKit CLI Auth and Google OAuth, including production OAuth
+   credentials and consent-screen settings.
+3. Copy that application's Client ID to `WORKOS_CLIENT_ID`.
+4. Create a production API key and upload it as `WORKOS_API_KEY`. The production
+   Client ID and API key must come from the same WorkOS environment.
+5. Configure production branding. CLI Auth uses WorkOS's device confirmation
+   page and does not require a Worker redirect URI.
+
+Production and staging WorkOS resources are separate; staging configuration is
+not copied when production is enabled. `AUTH_SECRET` signs only short-lived
+internal agent tokens; users never receive it.
 
 ## DNS and routes
 
@@ -85,6 +107,12 @@ Expected health response: `{"status":"ok"}`. Then configure the agent:
 
 Verify TLS, duplicate Set-Cookie behavior, cache response headers, reconnect after
 a Worker deployment, and the offline response after stopping the agent.
+
+For the production auth smoke test, complete `mt login` with a real account,
+confirm the CLI reports `Signed in.`, and create a tunnel. A `401 unauthorized`
+after browser confirmation usually means `WORKOS_CLIENT_ID` does not match the
+production access token. A `503 organization_unavailable` usually means
+`WORKOS_API_KEY` is missing, invalid, or from a different WorkOS environment.
 
 ## Rollback and secret rotation
 

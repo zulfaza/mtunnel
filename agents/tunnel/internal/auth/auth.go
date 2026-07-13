@@ -53,7 +53,7 @@ func postJSON(ctx context.Context, client *http.Client, target string, body any,
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(result)
 		return resp.StatusCode, nil
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(result); err != nil {
@@ -84,7 +84,11 @@ func WaitForDeviceLogin(ctx context.Context, client *http.Client, server string,
 		return Credentials{}, err
 	}
 	interval := max(device.Interval, 1)
-	deadline := time.NewTimer(time.Duration(max(device.ExpiresIn, 300)) * time.Second)
+	expiresIn := device.ExpiresIn
+	if expiresIn <= 0 {
+		expiresIn = 300
+	}
+	deadline := time.NewTimer(time.Duration(expiresIn) * time.Second)
 	defer deadline.Stop()
 	for {
 		select {
@@ -93,7 +97,10 @@ func WaitForDeviceLogin(ctx context.Context, client *http.Client, server string,
 		case <-deadline.C:
 			return Credentials{}, fmt.Errorf("login expired")
 		case <-time.After(time.Duration(interval) * time.Second):
-			var result Credentials
+			var result struct {
+				Credentials
+				Error string `json:"error"`
+			}
 			status, requestErr := postJSON(ctx, client, target, struct {
 				DeviceCode string `json:"deviceCode"`
 			}{device.DeviceCode}, &result)
@@ -101,10 +108,18 @@ func WaitForDeviceLogin(ctx context.Context, client *http.Client, server string,
 				return Credentials{}, fmt.Errorf("complete login: %w", requestErr)
 			}
 			if status == http.StatusOK && result.AccessToken != "" {
-				return result, nil
+				return result.Credentials, nil
 			}
-			if status == http.StatusBadRequest {
+			switch result.Error {
+			case "authorization_pending":
 				continue
+			case "slow_down":
+				interval++
+				continue
+			case "access_denied":
+				return Credentials{}, fmt.Errorf("login denied")
+			case "expired_token":
+				return Credentials{}, fmt.Errorf("login expired")
 			}
 			return Credentials{}, fmt.Errorf("complete login: server returned status %d", status)
 		}

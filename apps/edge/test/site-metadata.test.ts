@@ -36,4 +36,13 @@ describe("site metadata", () => {
     expect(installer).toContain('asset="mt-$os-$arch.tar.gz"');
     expect(installer).toContain('install -m 0755 "$tmp/mt" "$dest/mt"');
   });
+
+  it("renders the sparse animated network globe", async () => {
+    const landingHtml = await landingPage().text();
+
+    expect(landingHtml).toContain('class="network-spin"');
+    expect(landingHtml.match(/<path class="arc(?: dsh)?"/gu)).toHaveLength(16);
+    expect(landingHtml.match(/<circle class="pkt p\d"/gu)).toHaveLength(3);
+    expect(landingHtml).not.toContain('class="globe-world"');
+  });
 });
