@@ -57,15 +57,17 @@ describe("organization assignment", () => {
         response({ id: "user_1", email: "person@acme.test", email_verified: true }),
       )
       .mockResolvedValueOnce(response({ data: [] }))
+      .mockResolvedValueOnce(response({ data: [] }))
       .mockResolvedValueOnce(response(null, 404))
       .mockResolvedValueOnce(response({ id: "org_personal" }))
       .mockResolvedValueOnce(response({ id: "membership_1" }));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(ensureOrganizationForUser(env, "user_1")).resolves.toBe("org_personal");
-    expect(requestBody(fetchMock, 4)).toEqual({
+    expect(requestBody(fetchMock, 5)).toEqual({
       name: "person@acme.test's Organization",
       external_id: "ztunnel-user:user_1",
+      domain_data: [{ domain: "acme.test", state: "verified" }],
     });
   });
 

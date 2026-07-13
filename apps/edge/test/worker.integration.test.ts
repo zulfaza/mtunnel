@@ -271,6 +271,20 @@ describe("edge Worker routes", () => {
     expect(offline.status).toBe(502);
     await expect(offline.json()).resolves.toEqual({ error: "tunnel_offline" });
   });
+
+  it("negative-caches an offline tunnel for five seconds", async () => {
+    const tunnelId = "offline-cache-tunnel";
+    const first = await SELF.fetch(`http://worker.test/t/${tunnelId}/test`);
+    expect(first.status).toBe(502);
+    expect(first.headers.get("cache-control")).toBe("public, max-age=5");
+    const agent = await openAgent(tunnelId);
+    try {
+      const second = await SELF.fetch(`http://worker.test/t/${tunnelId}/test`);
+      expect(second.status).toBe(502);
+    } finally {
+      agent.close();
+    }
+  });
 });
 
 describe("fake-agent proxy lifecycle", () => {

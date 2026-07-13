@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { installScript, landingPage, siteManifest, termsPage } from "../src/pages.js";
+import { installScript, landingPage, siteManifest, termsPage } from "../src/routes/(web)/pages.js";
 import { SITE_METADATA } from "../src/site-metadata.js";
 
 describe("site metadata", () => {
