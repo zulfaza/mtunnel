@@ -31,12 +31,13 @@ pnpm exec wrangler secret put POSTHOG_API_KEY
 The Cloudflare API token needs `SSL and Certificates Write` for the tunnel zone.
 
 `POSTHOG_API_KEY` is optional. Use the project token, not a personal API key. When
-present, the Worker sends anonymous aggregate product events to `POSTHOG_HOST`.
-The configured host is the EU ingestion endpoint for project 222539. Analytics
-delivery is asynchronous and never changes request responses. It excludes
-tunneled traffic, URLs, headers, IP addresses, user and organization IDs, tunnel
-names, and request bodies. Each event uses a new random distinct ID with
-person-profile processing and GeoIP enrichment disabled.
+present, the Worker sends product events to `POSTHOG_HOST`. The configured host
+is the EU ingestion endpoint for project 222539. Delivery is asynchronous and
+never changes request responses. Site and API funnel events are anonymous;
+tunnel activity events use WorkOS user and organization IDs for active-user and
+organization reporting. Analytics never includes tunneled URLs, headers, IP
+addresses, tokens, config paths, local upstream addresses, or request bodies.
+See [Product analytics](analytics.md) for the event schema and privacy boundaries.
 
 Create the D1 database and copy its ID into `wrangler.jsonc`:
 
