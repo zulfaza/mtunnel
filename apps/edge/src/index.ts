@@ -41,9 +41,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 function trackedEvent(request: Request, env: Env): TrackedEvent | null {
   const url = new URL(request.url);
   const isPrimaryHost = url.hostname.toLowerCase() === env.TUNNEL_DOMAIN.toLowerCase();
-  return (
-    trackedSiteEvent(request, url, isPrimaryHost) ?? trackedApiEvent(request, url)
-  );
+  return trackedSiteEvent(request, url, isPrimaryHost) ?? trackedApiEvent(request, url);
 }
 
 async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

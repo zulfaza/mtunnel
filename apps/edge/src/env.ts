@@ -7,6 +7,7 @@ export interface Env {
   readonly REGISTRY: DurableObjectNamespace<RegistryDO>;
   readonly DOMAINS: D1Database;
   readonly AUTH_RATE_LIMITER: RateLimit;
+  readonly PROXY_RATE_LIMITER: RateLimit;
   readonly AUTH_SECRET?: string;
   readonly AUTH_MODE?: string;
   readonly DEV_AUTH_SECRET?: string;

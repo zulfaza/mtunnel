@@ -26,6 +26,22 @@ type SendFunc func(protocol.Message) error
 type OpenFunc func(context.Context, protocol.HelloAck, SendFunc) func()
 type MessageFunc func(protocol.Message)
 
+type outboundMessage interface {
+	outboundMessage()
+}
+
+type protocolOutbound struct {
+	message protocol.Message
+}
+
+func (protocolOutbound) outboundMessage() {}
+
+type textOutbound struct {
+	text string
+}
+
+func (textOutbound) outboundMessage() {}
+
 type Options struct {
 	Server          string
 	Secret          string
@@ -130,12 +146,20 @@ func runOnce(parent context.Context, opts Options) (protocol.HelloAck, error) {
 	// enqueue Cancel frames before the websocket is closed.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	outbound := make(chan protocol.Message, 64)
+	outbound := make(chan outboundMessage, 64)
 	writerErr := make(chan error, 1)
 	go writer(ctx, conn, outbound, writerErr)
-	send := func(m protocol.Message) error {
+	send := func(message protocol.Message) error {
 		select {
-		case outbound <- m:
+		case outbound <- protocolOutbound{message: message}:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	sendText := func(message string) error {
+		select {
+		case outbound <- textOutbound{text: message}:
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
@@ -159,14 +183,22 @@ func runOnce(parent context.Context, opts Options) (protocol.HelloAck, error) {
 	lastPong := time.Now()
 	var pongMu sync.Mutex
 	heartbeatErr := make(chan error, 1)
-	go heartbeat(ctx, ack, send, func() time.Time { pongMu.Lock(); defer pongMu.Unlock(); return lastPong }, heartbeatErr)
+	go heartbeat(ctx, ack, sendText, func() time.Time { pongMu.Lock(); defer pongMu.Unlock(); return lastPong }, heartbeatErr)
 	readErr := make(chan error, 1)
 	go func() {
 		for {
-			_, data, e := conn.Read(ctx)
+			messageType, data, e := conn.Read(ctx)
 			if e != nil {
 				readErr <- e
 				return
+			}
+			if messageType == websocket.MessageText {
+				if string(data) == "pong" {
+					pongMu.Lock()
+					lastPong = time.Now()
+					pongMu.Unlock()
+				}
+				continue
 			}
 			message, e := protocol.DecodeMessage(data)
 			if e != nil {
@@ -199,15 +231,23 @@ func runOnce(parent context.Context, opts Options) (protocol.HelloAck, error) {
 	}
 }
 
-func writer(ctx context.Context, conn *websocket.Conn, outbound <-chan protocol.Message, result chan<- error) {
+func writer(ctx context.Context, conn *websocket.Conn, outbound <-chan outboundMessage, result chan<- error) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case message := <-outbound:
-			data, err := protocol.EncodeMessage(message)
-			if err == nil {
-				err = conn.Write(ctx, websocket.MessageBinary, data)
+		case outboundMessage := <-outbound:
+			var err error
+			switch message := outboundMessage.(type) {
+			case protocolOutbound:
+				data, encodeErr := protocol.EncodeMessage(message.message)
+				if encodeErr != nil {
+					err = encodeErr
+				} else {
+					err = conn.Write(ctx, websocket.MessageBinary, data)
+				}
+			case textOutbound:
+				err = conn.Write(ctx, websocket.MessageText, []byte(message.text))
 			}
 			if err != nil {
 				result <- err
@@ -233,7 +273,7 @@ func readHelloAck(ctx context.Context, conn *websocket.Conn) (protocol.HelloAck,
 	return ack, nil
 }
 
-func heartbeat(ctx context.Context, ack protocol.HelloAck, send SendFunc, lastPong func() time.Time, result chan<- error) {
+func heartbeat(ctx context.Context, ack protocol.HelloAck, sendText func(string) error, lastPong func() time.Time, result chan<- error) {
 	interval := time.Duration(ack.HeartbeatIntervalMs) * time.Millisecond
 	timeout := time.Duration(ack.HeartbeatTimeoutMs) * time.Millisecond
 	if interval <= 0 {
@@ -253,7 +293,7 @@ func heartbeat(ctx context.Context, ack protocol.HelloAck, send SendFunc, lastPo
 				result <- errors.New("heartbeat timeout")
 				return
 			}
-			if err := send(protocol.Ping{}); err != nil {
+			if err := sendText("ping"); err != nil {
 				result <- err
 				return
 			}

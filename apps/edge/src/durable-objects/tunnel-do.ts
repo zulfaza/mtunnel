@@ -87,6 +87,30 @@ const CACHE_HEADERS: Readonly<Record<string, string>> = {
   pragma: "no-cache",
   expires: "0",
 };
+const OFFLINE_CACHE_HEADERS: Readonly<Record<string, string>> = {
+  "cache-control": "public, max-age=5",
+  "x-mtunnel-offline": "true",
+};
+const USAGE_FLUSH_MS = 10 * 60 * 1000;
+
+interface UsageSummary {
+  readonly connectionId: string;
+  readonly tunnelId: string;
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly startedAt: number;
+  requests: number;
+  errors: number;
+  bytesIn: number;
+  bytesOut: number;
+  durationMs: number;
+  standardDomainRequests: number;
+  customDomainRequests: number;
+  developmentPathRequests: number;
+  successfulResponses: number;
+  clientErrors: number;
+  serverErrors: number;
+}
 
 function positiveInt(value: string | undefined, fallback: number): number {
   if (value === undefined || !/^\d+$/u.test(value)) return fallback;
@@ -126,8 +150,19 @@ function cacheJson(status: number, error: string, message?: string): Response {
   return cacheResponse(jsonError(status, error, message));
 }
 
+function offlineResponse(response: Response): Response {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(OFFLINE_CACHE_HEADERS)) headers.set(name, value);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export class TunnelDO extends DurableObject<Env> {
   private readonly pending = new Map<string, PendingRequest>();
+  private readonly usage = new Map<string, UsageSummary>();
   private readonly limits: Limits;
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -140,6 +175,7 @@ export class TunnelDO extends DurableObject<Env> {
       heartbeatIntervalMs: positiveInt(env.HEARTBEAT_INTERVAL_MS, DEFAULT_HEARTBEAT_INTERVAL_MS),
       heartbeatTimeoutMs: positiveInt(env.HEARTBEAT_TIMEOUT_MS, DEFAULT_HEARTBEAT_TIMEOUT_MS),
     };
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
 
   override async fetch(request: Request): Promise<Response> {
@@ -159,17 +195,22 @@ export class TunnelDO extends DurableObject<Env> {
     readonly lastHeartbeatAt?: number;
   }> {
     const metadata = await this.ctx.storage.get<PersistedMetadata>("metadata");
-    const connected = this.ctx
-      .getWebSockets()
-      .some((socket) => this.attachment(socket)?.handshakeComplete === true);
+    const socket = this.connectedSocket();
+    const connected = socket !== null;
+    const autoResponseAt =
+      socket === null ? null : this.ctx.getWebSocketAutoResponseTimestamp(socket);
+    const lastHeartbeatAt =
+      autoResponseAt === null
+        ? metadata?.lastHeartbeatAt
+        : autoResponseAt instanceof Date
+          ? autoResponseAt.getTime()
+          : autoResponseAt;
     return {
       tunnelId: metadata?.tunnelId ?? requestTunnelId,
       connected,
       ...(metadata?.connectedAt === undefined ? {} : { connectedAt: metadata.connectedAt }),
       pendingRequests: this.pending.size,
-      ...(metadata?.lastHeartbeatAt === undefined
-        ? {}
-        : { lastHeartbeatAt: metadata.lastHeartbeatAt }),
+      ...(lastHeartbeatAt === undefined ? {} : { lastHeartbeatAt }),
     };
   }
 
@@ -257,26 +298,7 @@ export class TunnelDO extends DurableObject<Env> {
       bytesOut: pending.bytesOut,
       ...(error === undefined ? {} : { error }),
     });
-    this.ctx.waitUntil(
-      capture(this.env, {
-        event: "tunnel request completed",
-        distinctId: pending.userId,
-        organizationId: pending.organizationId,
-        properties: {
-          $session_id: pending.sessionId,
-          tunnel_id: pending.tunnelId,
-          route_type: pending.routeType,
-          used_custom_domain: pending.routeType === "custom_domain",
-          method: pending.method,
-          status,
-          duration_ms: Date.now() - pending.startedAt,
-          request_bytes: pending.bytesIn,
-          response_bytes: pending.bytesOut,
-          success: error === undefined && status < 500,
-          error,
-        },
-      }),
-    );
+    this.recordUsage(pending, status, error);
   }
 
   private cancel(
@@ -313,12 +335,14 @@ export class TunnelDO extends DurableObject<Env> {
     const tunnelId = request.headers.get("x-mtunnel-id");
     if (socket === null || tunnelId === null) {
       if (request.headers.get("accept")?.includes("text/html") === true)
-        return errorPage(
-          502,
-          "tunnel_offline",
-          "This tunnel is offline. Start the local agent and try again.",
+        return offlineResponse(
+          errorPage(
+            502,
+            "tunnel_offline",
+            "This tunnel is offline. Start the local agent and try again.",
+          ),
         );
-      return cacheJson(502, "tunnel_offline");
+      return offlineResponse(cacheJson(502, "tunnel_offline"));
     }
     await this.recordActivity(socket);
     if (this.pending.size >= this.limits.maxPendingRequests)
@@ -500,14 +524,6 @@ export class TunnelDO extends DurableObject<Env> {
     }
     if (decoded.kind === "ping") {
       this.send(ws, { kind: "pong" });
-      const attachment = this.attachment(ws);
-      if (attachment !== null) {
-        await this.ctx.storage.put("metadata", {
-          ...(await this.ctx.storage.get<PersistedMetadata>("metadata")),
-          tunnelId: attachment.tunnelId,
-          lastHeartbeatAt: Date.now(),
-        } satisfies PersistedMetadata);
-      }
       return;
     }
     if (
@@ -626,6 +642,7 @@ export class TunnelDO extends DurableObject<Env> {
   ): Promise<void> {
     const attachment = this.attachment(ws);
     if (attachment !== null) {
+      this.flushUsage(attachment.connectionId);
       await this.env.REGISTRY.getByName("global").releaseConnection(
         attachment.tunnelId,
         attachment.organizationId,
@@ -651,22 +668,35 @@ export class TunnelDO extends DurableObject<Env> {
           nextDeadline = deadline;
       }
     }
+    this.flushStaleUsage(now);
+    const usageDeadline = this.nextUsageFlushDeadline();
+    if (usageDeadline > 0 && (nextDeadline === 0 || usageDeadline < nextDeadline))
+      nextDeadline = usageDeadline;
     if (nextDeadline > 0) await this.ctx.storage.setAlarm(nextDeadline);
   }
 
   private async recordActivity(ws: WebSocket): Promise<void> {
     const attachment = this.attachment(ws);
     if (attachment === null || attachment.idleSeconds === 0) return;
+    const idleAt = Date.now() + attachment.idleSeconds * 1000;
+    if (idleAt - attachment.idleAt <= 30_000) return;
     const activeAttachment = {
       ...attachment,
-      idleAt: Date.now() + attachment.idleSeconds * 1000,
+      idleAt,
     } satisfies Attachment;
     ws.serializeAttachment(activeAttachment);
     await this.scheduleAccessAlarm(activeAttachment);
   }
 
   private async scheduleAccessAlarm(attachment: Attachment): Promise<void> {
-    const deadline = this.accessDeadline(attachment);
+    const accessDeadline = this.accessDeadline(attachment);
+    const usageDeadline = this.nextUsageFlushDeadline();
+    const deadline =
+      accessDeadline === 0
+        ? usageDeadline
+        : usageDeadline === 0
+          ? accessDeadline
+          : Math.min(accessDeadline, usageDeadline);
     if (deadline === 0) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(deadline);
   }
@@ -676,9 +706,11 @@ export class TunnelDO extends DurableObject<Env> {
     return deadlines.length === 0 ? 0 : Math.min(...deadlines);
   }
 
-  override webSocketError(_ws: WebSocket, error: unknown): void {
+  override webSocketError(ws: WebSocket, error: unknown): void {
     const detail = error instanceof Error ? error.message : "websocket error";
     logEvent({ event: "websocket_error", error: detail });
+    const attachment = this.attachment(ws);
+    if (attachment !== null) this.flushUsage(attachment.connectionId);
     this.failAll("upstream_error");
   }
 
@@ -687,5 +719,87 @@ export class TunnelDO extends DurableObject<Env> {
       if (pending.responseStarted) this.failStream(pending, error);
       else this.failBeforeStart(pending, 502, error);
     }
+  }
+
+  private recordUsage(pending: PendingRequest, status: number, error: string | undefined): void {
+    let summary = this.usage.get(pending.sessionId);
+    if (summary === undefined) {
+      summary = {
+        connectionId: pending.sessionId,
+        tunnelId: pending.tunnelId,
+        organizationId: pending.organizationId,
+        userId: pending.userId,
+        startedAt: Date.now(),
+        requests: 0,
+        errors: 0,
+        bytesIn: 0,
+        bytesOut: 0,
+        durationMs: 0,
+        standardDomainRequests: 0,
+        customDomainRequests: 0,
+        developmentPathRequests: 0,
+        successfulResponses: 0,
+        clientErrors: 0,
+        serverErrors: 0,
+      };
+      this.usage.set(pending.sessionId, summary);
+    }
+    summary.requests += 1;
+    summary.errors += error === undefined ? 0 : 1;
+    summary.bytesIn += pending.bytesIn;
+    summary.bytesOut += pending.bytesOut;
+    summary.durationMs += Date.now() - pending.startedAt;
+    if (pending.routeType === "standard_domain") summary.standardDomainRequests += 1;
+    else if (pending.routeType === "custom_domain") summary.customDomainRequests += 1;
+    else if (pending.routeType === "development_path") summary.developmentPathRequests += 1;
+    if (status >= 500) summary.serverErrors += 1;
+    else if (status >= 400) summary.clientErrors += 1;
+    else if (status >= 200) summary.successfulResponses += 1;
+    const socket = this.connectedSocket();
+    const attachment = socket === null ? null : this.attachment(socket);
+    if (attachment !== null) this.ctx.waitUntil(this.scheduleAccessAlarm(attachment));
+  }
+
+  private flushUsage(connectionId: string): void {
+    const summary = this.usage.get(connectionId);
+    if (summary === undefined) return;
+    this.usage.delete(connectionId);
+    this.ctx.waitUntil(
+      capture(this.env, {
+        event: "tunnel usage summary",
+        distinctId: summary.userId,
+        organizationId: summary.organizationId,
+        properties: {
+          $session_id: summary.connectionId,
+          tunnel_id: summary.tunnelId,
+          request_count: summary.requests,
+          error_count: summary.errors,
+          request_bytes: summary.bytesIn,
+          response_bytes: summary.bytesOut,
+          duration_ms: summary.durationMs,
+          standard_domain_requests: summary.standardDomainRequests,
+          custom_domain_requests: summary.customDomainRequests,
+          development_path_requests: summary.developmentPathRequests,
+          responses_2xx_3xx: summary.successfulResponses,
+          responses_4xx: summary.clientErrors,
+          responses_5xx: summary.serverErrors,
+        },
+      }),
+    );
+  }
+
+  private flushStaleUsage(now: number): void {
+    for (const summary of this.usage.values()) {
+      if (summary.startedAt + USAGE_FLUSH_MS <= now) this.flushUsage(summary.connectionId);
+    }
+  }
+
+  private nextUsageFlushDeadline(): number {
+    let deadline = 0;
+    for (const summary of this.usage.values()) {
+      const candidate = summary.startedAt + USAGE_FLUSH_MS;
+      if (deadline === 0 || candidate < deadline) deadline = candidate;
+    }
+    return deadline;
   }
 }

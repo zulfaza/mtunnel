@@ -35,6 +35,17 @@ func readServerMessage(ctx context.Context, conn *websocket.Conn) (protocol.Mess
 	return m, nil
 }
 
+func readServerText(ctx context.Context, conn *websocket.Conn) (string, error) {
+	messageType, data, err := conn.Read(ctx)
+	if err != nil {
+		return "", err
+	}
+	if messageType != websocket.MessageText {
+		return "", io.ErrUnexpectedEOF
+	}
+	return string(data), nil
+}
+
 func testServer(t *testing.T, tunnel func(*websocket.Conn, *http.Request)) *httptest.Server {
 	t.Helper()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -143,16 +154,16 @@ func TestHeartbeatPongKeepsConnectionAlive(t *testing.T) {
 			return
 		}
 		for {
-			m, err := readServerMessage(ctx, conn)
+			message, err := readServerText(ctx, conn)
 			if err != nil {
 				return
 			}
-			if _, ok := m.(protocol.Ping); ok {
+			if message == "ping" {
 				select {
 				case pings <- struct{}{}:
 				default:
 				}
-				if err := writeServerMessage(ctx, conn, protocol.Pong{}); err != nil {
+				if err := conn.Write(ctx, websocket.MessageText, []byte("pong")); err != nil {
 					return
 				}
 			}
@@ -203,7 +214,7 @@ func TestHeartbeatWithoutPongReconnects(t *testing.T) {
 			return
 		}
 		for {
-			if _, err := readServerMessage(ctx, conn); err != nil {
+			if _, err := readServerText(ctx, conn); err != nil {
 				return
 			} // Deliberately withhold Pong.
 		}

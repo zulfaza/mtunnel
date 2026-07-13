@@ -4,6 +4,10 @@ import { capture } from "../../analytics.js";
 import type { Env } from "../../env.js";
 import { stripInternalHeaders } from "../../utils/headers.js";
 import { jsonError } from "../../utils/json.js";
+import { errorPage } from "../(web)/pages.js";
+
+const OFFLINE_CACHE_MS = 5_000;
+const offlineUntil = new Map<string, number>();
 
 function publicOrigin(url: URL): string {
   return `${url.protocol}//${url.host}`;
@@ -100,6 +104,14 @@ export async function forwardProxy(
   url: URL,
   routeType: "standard_domain" | "custom_domain" | "development_path",
 ): Promise<Response> {
+  const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const { success } = await env.PROXY_RATE_LIMITER.limit({ key: `${clientIp}:${tunnelId}` });
+  if (!success) return jsonError(429, "rate_limited");
+  const offlineKey = `${url.host}:${tunnelId}`;
+  const now = Date.now();
+  const until = offlineUntil.get(offlineKey);
+  if (until !== undefined && until > now) return offlineResponse(request);
+  if (until !== undefined) offlineUntil.delete(offlineKey);
   const headers = stripInternalHeaders(request.headers);
   // Force the upstream to respond identity-encoded; the edge compresses for the
   // eyeball. Relaying an already-compressed body makes workerd gzip it a second
@@ -107,5 +119,39 @@ export async function forwardProxy(
   headers.delete("accept-encoding");
   headers.set("x-mtunnel-id", tunnelId);
   headers.set("x-mtunnel-route-type", routeType);
-  return env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
+  const response = await env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
+  if (response.headers.get("x-mtunnel-offline") !== "true") return response;
+  offlineUntil.set(offlineKey, now + OFFLINE_CACHE_MS);
+  return responseWithoutOfflineMarker(response);
+}
+
+function offlineResponse(request: Request): Response {
+  if (request.headers.get("accept")?.includes("text/html") === true) {
+    const response = errorPage(
+      502,
+      "tunnel_offline",
+      "This tunnel is offline. Start the local agent and try again.",
+    );
+    const headers = new Headers(response.headers);
+    headers.set("cache-control", "public, max-age=5");
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
+  return new Response(JSON.stringify({ error: "tunnel_offline" }), {
+    status: 502,
+    headers: { "content-type": "application/json", "cache-control": "public, max-age=5" },
+  });
+}
+
+function responseWithoutOfflineMarker(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.delete("x-mtunnel-offline");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }

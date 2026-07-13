@@ -218,9 +218,7 @@ export async function organizationForMember(
   organizationId: string,
 ): Promise<string | null> {
   const memberships = await listOrganizationsForUser(env, userId);
-  return memberships.some((membership) => membership.id === organizationId)
-    ? organizationId
-    : null;
+  return memberships.some((membership) => membership.id === organizationId) ? organizationId : null;
 }
 
 export async function createOrganizationForUser(
