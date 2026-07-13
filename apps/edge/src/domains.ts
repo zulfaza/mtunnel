@@ -41,19 +41,16 @@ interface DomainRecord {
   readonly lastUsedAt: number | null;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isDomainStatus(value: unknown): value is DomainStatus {
   return (
     value === "pending_dns" || value === "provisioning" || value === "active" || value === "failed"
   );
 }
 
-function parseDomainRecord(value: unknown): DomainRecord | null {
+function parseDomainRecord(input: unknown): DomainRecord | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return null;
+  const value = input as Record<string, unknown>;
   if (
-    !isRecord(value) ||
     typeof value.hostname !== "string" ||
     typeof value.tunnel_id !== "string" ||
     typeof value.organization_id !== "string" ||
@@ -70,9 +67,9 @@ function parseDomainRecord(value: unknown): DomainRecord | null {
     organizationId: value.organization_id,
     verificationToken: value.verification_token,
     status: value.status,
-    cloudflareHostnameId: value.cloudflare_hostname_id,
-    error: value.error,
-    lastUsedAt: value.last_used_at,
+    cloudflareHostnameId: value.cloudflare_hostname_id as string | null,
+    error: value.error as string | null,
+    lastUsedAt: value.last_used_at as number | null,
   };
 }
 
@@ -208,11 +205,15 @@ export async function addDomain(
     : { ok: true, domain: view(record, env.CUSTOM_DOMAIN_CNAME) };
 }
 
-function parseDnsAnswers(value: unknown): readonly string[] {
-  if (!isRecord(value) || !Array.isArray(value.Answer)) return [];
-  return value.Answer.flatMap((answer): readonly string[] =>
-    isRecord(answer) && typeof answer.data === "string" ? [answer.data] : [],
-  );
+function parseDnsAnswers(input: unknown): readonly string[] {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return [];
+  const value = input as Record<string, unknown>;
+  if (!Array.isArray(value.Answer)) return [];
+  return value.Answer.flatMap((answer: unknown): readonly string[] => {
+    if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return [];
+    const data = (answer as Record<string, unknown>).data;
+    return typeof data === "string" ? [data] : [];
+  });
 }
 
 async function hasVerificationRecord(record: DomainRecord): Promise<boolean> {
@@ -226,29 +227,46 @@ async function hasVerificationRecord(record: DomainRecord): Promise<boolean> {
   return parseDnsAnswers(value).some((answer) => answer.replaceAll('"', "") === expected);
 }
 
-function cloudflareFailure(value: unknown, status: number): string {
-  if (isRecord(value) && Array.isArray(value.errors)) {
-    for (const error of value.errors) {
-      if (isRecord(error) && typeof error.message === "string") return error.message;
+function cloudflareFailure(input: unknown, status: number): string {
+  if (typeof input === "object" && input !== null && !Array.isArray(input)) {
+    const record = input as Record<string, unknown>;
+    if (Array.isArray(record.errors)) {
+      for (const error of record.errors) {
+        if (typeof error === "object" && error !== null && !Array.isArray(error)) {
+          const message = (error as Record<string, unknown>).message;
+          if (typeof message === "string") return message;
+        }
+      }
     }
   }
   return `Cloudflare returned status ${status}`;
 }
 
 function cloudflareHostname(
-  value: unknown,
+  input: unknown,
 ): { readonly id: string; readonly active: boolean } | null {
-  if (!isRecord(value) || !isRecord(value.result) || typeof value.result.id !== "string")
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return null;
+  const inputResult = (input as Record<string, unknown>).result;
+  if (typeof inputResult !== "object" || inputResult === null || Array.isArray(inputResult))
     return null;
-  const sslActive = isRecord(value.result.ssl) && value.result.ssl.status === "active";
-  return { id: value.result.id, active: value.result.status === "active" && sslActive };
+  const result = inputResult as Record<string, unknown>;
+  if (typeof result.id !== "string") return null;
+  const ssl = result.ssl;
+  const sslActive =
+    typeof ssl === "object" &&
+    ssl !== null &&
+    !Array.isArray(ssl) &&
+    (ssl as Record<string, unknown>).status === "active";
+  return { id: result.id, active: result.status === "active" && sslActive };
 }
 
 function listedCloudflareHostname(
-  value: unknown,
+  input: unknown,
 ): { readonly id: string; readonly active: boolean } | null {
-  if (!isRecord(value) || !Array.isArray(value.result)) return null;
-  for (const result of value.result) {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return null;
+  const results = (input as Record<string, unknown>).result;
+  if (!Array.isArray(results)) return null;
+  for (const result of results) {
     const parsed = cloudflareHostname({ result });
     if (parsed !== null) return parsed;
   }
@@ -484,5 +502,7 @@ export async function tunnelIdForDomain(env: Env, hostname: string): Promise<str
   )
     .bind(hostname)
     .first();
-  return isRecord(value) && typeof value.tunnel_id === "string" ? value.tunnel_id : null;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const tunnelId = (value as Record<string, unknown>).tunnel_id;
+  return typeof tunnelId === "string" ? tunnelId : null;
 }

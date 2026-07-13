@@ -15,7 +15,6 @@
   "dependencies": {
     "@tunnel/config": "workspace:*",
     "@tunnel/protocol": "workspace:*",
-    "@tunnel/shared": "workspace:*",
     "jose": "^6.2.3"
   },
   "devDependencies": {

@@ -1,11 +1,22 @@
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import type { Env } from "../env.js";
-import { ensureOrganizationForUser } from "./organizations.js";
+import { ensureOrganizationForUser, organizationForMember } from "./organizations.js";
 import { timingSafeSecretEqual } from "./index.js";
+import { jsonError } from "../utils/json.js";
 
 export type UserAuth =
   | { readonly ok: true; readonly userId: string; readonly organizationId: string }
-  | { readonly ok: false; readonly status: 401 | 503 };
+  | { readonly ok: false; readonly status: 401 | 403 | 503 };
+
+export function authErrorResponse(auth: { readonly status: 401 | 403 | 503 }): Response {
+  const error =
+    auth.status === 401
+      ? "unauthorized"
+      : auth.status === 403
+        ? "forbidden"
+        : "organization_unavailable";
+  return jsonError(auth.status, error);
+}
 
 const jwksByClientId = new Map<string, JWTVerifyGetKey>();
 
@@ -56,8 +67,14 @@ export async function authenticateUser(request: Request, env: Env): Promise<User
     };
   const userId = await verifyWorkosAccessToken(token, env);
   if (userId === null) return { ok: false, status: 401 };
+  const requestedOrganizationId = request.headers.get("x-organization-id");
   try {
-    return { ok: true, userId, organizationId: await ensureOrganizationForUser(env, userId) };
+    const organizationId =
+      requestedOrganizationId === null
+        ? await ensureOrganizationForUser(env, userId)
+        : await organizationForMember(env, userId, requestedOrganizationId);
+    if (organizationId === null) return { ok: false, status: 403 };
+    return { ok: true, userId, organizationId };
   } catch {
     return { ok: false, status: 503 };
   }

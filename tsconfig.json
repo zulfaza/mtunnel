@@ -7,7 +7,6 @@
   "references": [
     { "path": "packages/protocol" },
     { "path": "packages/config" },
-    { "path": "packages/shared" },
     { "path": "apps/edge" }
   ]
 }

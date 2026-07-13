@@ -21,7 +21,7 @@ import { jsonError } from "../utils/json.js";
 import { headersToPairs, stripHopByHopHeaderPairs } from "../utils/headers.js";
 import { logEvent } from "../utils/logging.js";
 import type { Env } from "../env.js";
-import { errorPage } from "../pages.js";
+import { errorPage } from "../routes/(web)/pages.js";
 import { capture } from "../analytics.js";
 
 interface Attachment {

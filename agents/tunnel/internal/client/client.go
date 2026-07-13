@@ -32,6 +32,7 @@ type Options struct {
 	RefreshToken    string
 	OnCredentials   func(auth.Credentials) error
 	TunnelID        string
+	OrganizationID  string
 	AgentVersion    string
 	UsageSource     string
 	OperatingSystem string
@@ -104,7 +105,7 @@ func Run(ctx context.Context, opts Options) error {
 }
 
 func runOnce(parent context.Context, opts Options) (protocol.HelloAck, error) {
-	token, err := auth.MintToken(parent, opts.HTTPClient, opts.Server, opts.Secret, opts.TunnelID)
+	token, err := auth.MintToken(parent, opts.HTTPClient, opts.Server, opts.Secret, opts.TunnelID, opts.OrganizationID)
 	if err != nil {
 		return protocol.HelloAck{}, err
 	}

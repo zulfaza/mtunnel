@@ -13,10 +13,11 @@ import (
 const ProjectFilename = "mtunnel.config.json"
 
 type Config struct {
-	Server       string `json:"server"`
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken,omitempty"`
-	Secret       string `json:"secret,omitempty"` // Legacy development config.
+	Server         string `json:"server"`
+	AccessToken    string `json:"accessToken"`
+	RefreshToken   string `json:"refreshToken,omitempty"`
+	OrganizationID string `json:"organizationId,omitempty"`
+	Secret         string `json:"secret,omitempty"` // Legacy development config.
 }
 
 type ProjectConfig struct {

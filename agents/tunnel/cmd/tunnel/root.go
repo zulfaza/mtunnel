@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zulfaza/mtunnel/agents/tunnel/internal/auth"
 	"github.com/zulfaza/mtunnel/agents/tunnel/internal/config"
+	"github.com/zulfaza/mtunnel/agents/tunnel/internal/update"
 )
 
 type rootOptions struct {
@@ -37,7 +38,13 @@ func newRootCmd() *cobra.Command {
 		Short:             "Expose a local HTTP server through mtunnel",
 		SilenceErrors:     true,
 		SilenceUsage:      true,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return o.configureLogger() },
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if err := o.configureLogger(); err != nil {
+				return err
+			}
+			notifyUpdateAvailable(cmd, o.config)
+			return nil
+		},
 	}
 	flags := cmd.PersistentFlags()
 	flags.StringVar(&o.server, "server", "", "override tunnel server URL")
@@ -48,8 +55,22 @@ func newRootCmd() *cobra.Command {
 	flags.DurationVar(&o.requestTimeout, "request-timeout", 30*time.Second, "upstream request timeout")
 	flags.DurationVar(&o.idleTimeout, "idle-timeout", 15*time.Minute, "close tunnel after this long without a request (0 disables)")
 	flags.StringVar(&o.logLevel, "log-level", "info", "debug, info, warn, or error")
-	cmd.AddCommand(newLoginCmd(o), newHTTPCmd(o), newStatusCmd(o), newDomainCmd(o), newUpdateCmd(), newVersionCmd())
+	cmd.AddCommand(newLoginCmd(o), newHTTPCmd(o), newStatusCmd(o), newDomainCmd(o), newOrganizationCmd(o), newUpdateCmd(), newVersionCmd())
 	return cmd
+}
+
+// notifyUpdateAvailable prints a one-line notice to stderr when a newer
+// release exists. It never blocks command execution: the GitHub lookup is
+// cached for 24h and time-bounded, and any failure is silently ignored.
+func notifyUpdateAvailable(cmd *cobra.Command, configPath string) {
+	if version == "dev" || cmd.Name() == "version" || cmd.Name() == "update" || os.Getenv("MT_NO_UPDATE_CHECK") != "" {
+		return
+	}
+	latest, err := update.CheckCached(cmd.Context(), http.DefaultClient, update.CachePath(configPath))
+	if err != nil || !update.IsNewer(version, latest) {
+		return
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "a new version of mt is available: %s -> %s (run \"mt update\")\n", version, latest)
 }
 
 func exactArgsWithHelp(count int) cobra.PositionalArgs {
@@ -164,6 +185,9 @@ func (o *rootOptions) doAuthenticated(ctx context.Context, cfg config.Config, ne
 		if err != nil {
 			return nil, err
 		}
+		if cfg.OrganizationID != "" {
+			req.Header.Set("X-Organization-Id", cfg.OrganizationID)
+		}
 		return http.DefaultClient.Do(req)
 	}
 	resp, err := send(accessToken)
@@ -176,7 +200,7 @@ func (o *rootOptions) doAuthenticated(ctx context.Context, cfg config.Config, ne
 	if err != nil {
 		return nil, err
 	}
-	if err := config.Save(o.config, config.Config{Server: cfg.Server, AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken}); err != nil {
+	if err := config.Save(o.config, config.Config{Server: cfg.Server, AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken, OrganizationID: cfg.OrganizationID}); err != nil {
 		return nil, err
 	}
 	return send(credentials.AccessToken)

@@ -50,7 +50,7 @@ func TestMintToken(t *testing.T) {
 		_, _ = w.Write([]byte(`{"token":"minted"}`))
 	}))
 	defer server.Close()
-	got, err := MintToken(context.Background(), server.Client(), server.URL, "secret", "my-tunnel")
+	got, err := MintToken(context.Background(), server.Client(), server.URL, "secret", "my-tunnel", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,10 +59,24 @@ func TestMintToken(t *testing.T) {
 	}
 }
 
+func TestMintTokenOrganizationHeader(t *testing.T) {
+	server := newServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Organization-Id") != "org_123" {
+			t.Errorf("organization header = %q", r.Header.Get("X-Organization-Id"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"token":"minted"}`))
+	}))
+	defer server.Close()
+	if _, err := MintToken(context.Background(), server.Client(), server.URL, "secret", "my-tunnel", "org_123"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMintTokenUnauthorized(t *testing.T) {
 	server := newServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusUnauthorized) }))
 	defer server.Close()
-	_, err := MintToken(context.Background(), server.Client(), server.URL, "secret", "my-tunnel")
+	_, err := MintToken(context.Background(), server.Client(), server.URL, "secret", "my-tunnel", "")
 	if err == nil || !strings.Contains(err.Error(), "401") {
 		t.Fatalf("error = %v, want descriptive 401 error", err)
 	}

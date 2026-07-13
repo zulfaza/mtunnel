@@ -144,7 +144,7 @@ func Refresh(ctx context.Context, client *http.Client, server, refreshToken stri
 	return result, nil
 }
 
-func MintToken(ctx context.Context, client *http.Client, server, accessToken, tunnelID string) (string, error) {
+func MintToken(ctx context.Context, client *http.Client, server, accessToken, tunnelID, organizationID string) (string, error) {
 	target, err := endpoint(server, "/api/v1/auth/token")
 	if err != nil {
 		return "", err
@@ -161,6 +161,9 @@ func MintToken(ctx context.Context, client *http.Client, server, accessToken, tu
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
+	if organizationID != "" {
+		req.Header.Set("X-Organization-Id", organizationID)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("mint agent token: %w", err)

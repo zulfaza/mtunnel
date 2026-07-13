@@ -29,9 +29,6 @@ importers:
       '@tunnel/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
-      '@tunnel/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       jose:
         specifier: ^6.2.3
         version: 6.2.3
@@ -76,18 +73,6 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^5
         version: 5.20260710.1
-      '@tunnel/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-      typescript:
-        specifier: ^5
-        version: 5.9.3
-      vitest:
-        specifier: ^3
-        version: 3.2.7
-
-  packages/shared:
-    devDependencies:
       '@tunnel/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig

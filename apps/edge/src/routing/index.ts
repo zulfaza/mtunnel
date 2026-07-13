@@ -1,4 +1,4 @@
-import { isValidTunnelId } from "@tunnel/shared";
+import { isValidTunnelId } from "../utils/tunnel-id";
 
 function withoutPort(host: string): string {
   const trimmed = host.trim().toLowerCase();
