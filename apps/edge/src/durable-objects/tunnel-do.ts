@@ -22,6 +22,7 @@ import { headersToPairs, stripHopByHopHeaderPairs } from "../utils/headers.js";
 import { logEvent } from "../utils/logging.js";
 import type { Env } from "../env.js";
 import { errorPage } from "../pages.js";
+import { capture } from "../analytics.js";
 
 interface Attachment {
   readonly tunnelId: string;
@@ -29,6 +30,7 @@ interface Attachment {
   readonly devRouting: boolean;
   readonly handshakeComplete: boolean;
   readonly organizationId: string;
+  readonly userId?: string;
   readonly connectionId: string;
   readonly lifetimeSeconds: number;
   readonly idleSeconds: number;
@@ -52,6 +54,10 @@ interface PendingRequest {
   readonly idHex: string;
   readonly tunnelId: string;
   readonly method: string;
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly sessionId: string;
+  readonly routeType: string;
   readonly startedAt: number;
   readonly resolveStart: (result: StartResult) => void;
   readonly abortListener: () => void;
@@ -97,6 +103,7 @@ function isAttachment(value: unknown): value is Attachment {
     typeof record.devRouting === "boolean" &&
     typeof record.handshakeComplete === "boolean" &&
     typeof record.organizationId === "string" &&
+    (record.userId === undefined || typeof record.userId === "string") &&
     typeof record.connectionId === "string" &&
     typeof record.lifetimeSeconds === "number" &&
     typeof record.idleSeconds === "number" &&
@@ -173,6 +180,7 @@ export class TunnelDO extends DurableObject<Env> {
     const tunnelId = request.headers.get("x-mtunnel-id");
     const publicOrigin = request.headers.get("x-mtunnel-public-origin");
     const organizationId = request.headers.get("x-mtunnel-organization-id");
+    const userId = request.headers.get("x-mtunnel-user-id");
     const connectionId = request.headers.get("x-mtunnel-connection-id");
     const lifetimeSeconds = Number(request.headers.get("x-mtunnel-lifetime-seconds"));
     const idleSeconds = Number(request.headers.get("x-mtunnel-idle-seconds"));
@@ -180,6 +188,7 @@ export class TunnelDO extends DurableObject<Env> {
       tunnelId === null ||
       publicOrigin === null ||
       organizationId === null ||
+      userId === null ||
       connectionId === null ||
       !Number.isSafeInteger(lifetimeSeconds) ||
       lifetimeSeconds < 0 ||
@@ -198,6 +207,7 @@ export class TunnelDO extends DurableObject<Env> {
       devRouting: request.headers.get("x-mtunnel-dev-routing") === "true",
       handshakeComplete: false,
       organizationId,
+      userId,
       connectionId,
       lifetimeSeconds,
       idleSeconds,
@@ -247,6 +257,26 @@ export class TunnelDO extends DurableObject<Env> {
       bytesOut: pending.bytesOut,
       ...(error === undefined ? {} : { error }),
     });
+    this.ctx.waitUntil(
+      capture(this.env, {
+        event: "tunnel request completed",
+        distinctId: pending.userId,
+        organizationId: pending.organizationId,
+        properties: {
+          $session_id: pending.sessionId,
+          tunnel_id: pending.tunnelId,
+          route_type: pending.routeType,
+          used_custom_domain: pending.routeType === "custom_domain",
+          method: pending.method,
+          status,
+          duration_ms: Date.now() - pending.startedAt,
+          request_bytes: pending.bytesIn,
+          response_bytes: pending.bytesOut,
+          success: error === undefined && status < 500,
+          error,
+        },
+      }),
+    );
   }
 
   private cancel(
@@ -279,6 +309,7 @@ export class TunnelDO extends DurableObject<Env> {
 
   private async handleProxy(request: Request): Promise<Response> {
     const socket = this.connectedSocket();
+    const metadata = socket === null ? null : this.attachment(socket);
     const tunnelId = request.headers.get("x-mtunnel-id");
     if (socket === null || tunnelId === null) {
       if (request.headers.get("accept")?.includes("text/html") === true)
@@ -304,6 +335,10 @@ export class TunnelDO extends DurableObject<Env> {
       idHex,
       tunnelId,
       method: request.method,
+      organizationId: metadata?.organizationId ?? "unknown",
+      userId: metadata?.userId ?? "unknown",
+      sessionId: metadata?.connectionId ?? "unknown",
+      routeType: request.headers.get("x-mtunnel-route-type") ?? "unknown",
       startedAt: Date.now(),
       resolveStart,
       requestSignal: request.signal,

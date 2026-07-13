@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime"
 	"sync"
 	"time"
 
@@ -29,6 +30,7 @@ type Options struct {
 	HTTPClient     *http.Client
 	InitialBackoff time.Duration
 	OnConnected    func(protocol.HelloAck, bool)
+	UsageSource    string
 }
 
 func Run(ctx context.Context, opts Options) error {
@@ -105,7 +107,7 @@ func Run(ctx context.Context, opts Options) error {
 			mu.Unlock()
 		}
 	}
-	err := client.Run(ctx, client.Options{Server: opts.Server, Secret: opts.Secret, RefreshToken: opts.RefreshToken, OnCredentials: opts.OnCredentials, TunnelID: opts.TunnelID, AgentVersion: "dev", HTTPClient: httpClient, Logger: opts.Logger, InitialBackoff: opts.InitialBackoff, OnOpen: onOpen, OnMessage: onMessage})
+	err := client.Run(ctx, client.Options{Server: opts.Server, Secret: opts.Secret, RefreshToken: opts.RefreshToken, OnCredentials: opts.OnCredentials, TunnelID: opts.TunnelID, AgentVersion: "dev", UsageSource: opts.UsageSource, OperatingSystem: runtime.GOOS, HTTPClient: httpClient, Logger: opts.Logger, InitialBackoff: opts.InitialBackoff, OnOpen: onOpen, OnMessage: onMessage})
 	if err == client.ErrReplaced {
 		opts.Logger.Warn("tunnel replaced by a newer agent", "tunnelId", opts.TunnelID)
 	}

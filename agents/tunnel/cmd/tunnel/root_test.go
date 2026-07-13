@@ -36,11 +36,11 @@ func TestResolveHTTPConfiguredTunnel(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(previousDirectory) })
-	port, name, hostname, err := resolveHTTPTarget("api")
+	port, name, hostname, usedProjectConfig, err := resolveHTTPTarget("api")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if port != 3000 || name != "api" || hostname != "127.0.0.1" {
+	if port != 3000 || name != "api" || hostname != "127.0.0.1" || !usedProjectConfig {
 		t.Fatalf("resolved target = (%d, %q, %q)", port, name, hostname)
 	}
 }
@@ -58,7 +58,7 @@ func TestResolveHTTPInvalidNumericPortDoesNotUseProjectConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(previousDirectory) })
-	_, _, _, err = resolveHTTPTarget("70000")
+	_, _, _, _, err = resolveHTTPTarget("70000")
 	if err == nil || !strings.Contains(err.Error(), "valid TCP port") {
 		t.Fatalf("resolveHTTPTarget() error = %v", err)
 	}

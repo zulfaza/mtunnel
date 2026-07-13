@@ -22,7 +22,7 @@ import (
 
 func newHTTPCmd(o *rootOptions) *cobra.Command {
 	return &cobra.Command{Use: "http <port|name>", Short: "Open an HTTP tunnel", Args: exactArgsWithHelp(1), RunE: func(cmd *cobra.Command, args []string) error {
-		port, tunnelName, configuredHostname, err := resolveHTTPTarget(args[0])
+		port, tunnelName, configuredHostname, usedProjectConfig, err := resolveHTTPTarget(args[0])
 		if err != nil {
 			return err
 		}
@@ -65,9 +65,13 @@ func newHTTPCmd(o *rootOptions) *cobra.Command {
 			}
 		}()
 		first := true
+		usageSource := "terminal"
+		if usedProjectConfig {
+			usageSource = "project_config"
+		}
 		err = agent.Run(ctx, agent.Options{Server: cfg.Server, Secret: accessToken, RefreshToken: cfg.RefreshToken, OnCredentials: func(credentials auth.Credentials) error {
 			return config.Save(o.config, config.Config{Server: cfg.Server, AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken})
-		}, TunnelID: name, Hostname: hostname, Port: port, RequestTimeout: o.requestTimeout, IdleTimeout: o.idleTimeout, Logger: o.logger, OnConnected: func(ack protocol.HelloAck, reconnected bool) {
+		}, TunnelID: name, Hostname: hostname, Port: port, RequestTimeout: o.requestTimeout, IdleTimeout: o.idleTimeout, Logger: o.logger, UsageSource: usageSource, OnConnected: func(ack protocol.HelloAck, reconnected bool) {
 			if first && !reconnected {
 				fmt.Fprintf(cmd.OutOrStdout(), "Tunnel connected\n\nPublic URL:\n%s\n\nForwarding:\nhttp://%s:%d\n", ack.PublicURL, hostname, port)
 				first = false
@@ -82,33 +86,33 @@ func newHTTPCmd(o *rootOptions) *cobra.Command {
 	}}
 }
 
-func resolveHTTPTarget(value string) (int, string, string, error) {
+func resolveHTTPTarget(value string) (int, string, string, bool, error) {
 	port, err := parsePort(value)
 	if err == nil {
-		return port, "", "", nil
+		return port, "", "", false, nil
 	}
 	if _, conversionError := strconv.Atoi(value); conversionError == nil {
-		return 0, "", "", err
+		return 0, "", "", false, err
 	}
 	workingDirectory, workingDirectoryError := os.Getwd()
 	if workingDirectoryError != nil {
-		return 0, "", "", fmt.Errorf("get working directory: %w", workingDirectoryError)
+		return 0, "", "", false, fmt.Errorf("get working directory: %w", workingDirectoryError)
 	}
 	projectConfig, path, loadError := config.LoadProject(workingDirectory)
 	if loadError != nil {
 		if errors.Is(loadError, fs.ErrNotExist) {
-			return 0, "", "", err
+			return 0, "", "", false, err
 		}
-		return 0, "", "", loadError
+		return 0, "", "", false, loadError
 	}
 	tunnel, exists := projectConfig.Tunnels[value]
 	if !exists {
-		return 0, "", "", fmt.Errorf("tunnel %q not found in %s", value, path)
+		return 0, "", "", false, fmt.Errorf("tunnel %q not found in %s", value, path)
 	}
 	if _, err := parsePort(strconv.Itoa(tunnel.Port)); err != nil {
-		return 0, "", "", fmt.Errorf("tunnel %q in %s has invalid port %d", value, path, tunnel.Port)
+		return 0, "", "", false, fmt.Errorf("tunnel %q in %s has invalid port %d", value, path, tunnel.Port)
 	}
-	return tunnel.Port, value, tunnel.Hostname, nil
+	return tunnel.Port, value, tunnel.Hostname, true, nil
 }
 
 func parsePort(value string) (int, error) {
