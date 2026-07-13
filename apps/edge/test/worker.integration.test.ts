@@ -135,6 +135,7 @@ describe("edge Worker routes", () => {
     expect(landingHtml).toContain('property="og:image" content="https://makarima.xyz/og.png"');
     expect(landingHtml).toContain('rel="canonical" href="https://makarima.xyz/"');
     expect(landingHtml).toContain('rel="icon" href="/favicon.ico"');
+    expect(landingHtml).toContain('href="https://github.com/zulfaza/mtunnel"');
     const favicon = await SELF.fetch("http://worker.test/favicon.ico");
     expect(favicon.status).toBe(200);
     expect(favicon.headers.get("content-type")).toBe("image/vnd.microsoft.icon");
@@ -144,7 +145,9 @@ describe("edge Worker routes", () => {
       theme_color: "#fbfaf8",
     });
     const installer = await SELF.fetch("http://worker.test/install.sh");
-    expect(await installer.text()).toContain("github.com/$repo/releases/latest/download");
+    const installerScript = await installer.text();
+    expect(installerScript).toContain("repo=zulfaza/mtunnel");
+    expect(installerScript).toContain("github.com/$repo/releases/latest/download");
     const offline = await SELF.fetch("http://worker.test/t/no-browser-agent", {
       headers: { accept: "text/html" },
     });
