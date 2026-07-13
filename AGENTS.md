@@ -12,7 +12,7 @@
 
 ## Before commit
 
-- Run `pnpm format:write` before every commit.
+- Run `pnpm format:write` and `pnpm lint` before every commit.
 
 ## Terminal and Agent First
 
