@@ -8,3 +8,4 @@ agents/tunnel/bin
 .env
 *.tsbuildinfo
 /.agents/
+.DS_Store
