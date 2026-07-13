@@ -23,8 +23,11 @@ mt login
 mt http 3000 --name demo-tunnel
 ```
 
-Login uses WorkOS AuthKit device authorization (including Google). Update with
-`mt update`. Add a custom hostname with:
+Login uses WorkOS AuthKit device authorization (including Google). `mt update`
+verifies signed releases before installing them. The release Ed25519 public key
+is `B12X/7YmLu4Oc2eR1IKgywrVZAD2EVWJepcIONMBdTI=` (SHA-256:
+`09453b5ffd77ce0e6a5e39cebb9a9773cf0a3c97a540423e6eb1ffc27dcfffa8`). Add a
+custom hostname with:
 
 ```sh
 mt domain add dev-dash.upsell.is --name demo-tunnel

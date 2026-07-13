@@ -8,6 +8,18 @@ the server URL and root secret in a mode-0600 configuration file. Agent connect
 tokens are HMAC-SHA256 signed, tunnel-bound, purpose-bound, and valid for 15
 minutes.
 
+## Release signing
+
+`mt update` verifies the signed release manifest before downloading or replacing
+the binary. The embedded Ed25519 public key is
+`B12X/7YmLu4Oc2eR1IKgywrVZAD2EVWJepcIONMBdTI=`; its SHA-256 fingerprint is
+`09453b5ffd77ce0e6a5e39cebb9a9773cf0a3c97a540423e6eb1ffc27dcfffa8`.
+
+To rotate a signing key, release a binary that trusts both the old and new
+keys, sign the following release with the new key, then remove the old key in
+the next release. After a compromise, remove the affected key, rotate the
+`SIGNING_KEY` GitHub environment secret, and announce the change out of band.
+
 Connect tokens travel in the WebSocket `Authorization` header, not the URL, to
 keep them out of ordinary request logs. The Worker removes authorization before
 forwarding the upgrade to the Durable Object. Tokens and secrets must never be
