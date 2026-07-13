@@ -32,8 +32,32 @@ jobs:
           go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o mt ./cmd/tunnel
           tar -czf "mt-${GOOS}-${GOARCH}.tar.gz" mt
           sha256sum "mt-${GOOS}-${GOARCH}.tar.gz" > "mt-${GOOS}-${GOARCH}.tar.gz.sha256"
-      - uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          files: |
+          name: mt-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
             agents/tunnel/mt-*.tar.gz
             agents/tunnel/mt-*.tar.gz.sha256
+
+  sign-and-release:
+    needs: binaries
+    runs-on: ubuntu-latest
+    environment: release-signing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agents/tunnel/go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          path: agents/tunnel/release
+          merge-multiple: true
+      - name: Sign manifest
+        working-directory: agents/tunnel/release
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: go run ../cmd/signer
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: agents/tunnel/release/*

@@ -148,6 +148,8 @@ describe("edge Worker routes", () => {
     const installerScript = await installer.text();
     expect(installerScript).toContain("repo=zulfaza/mtunnel");
     expect(installerScript).toContain("github.com/$repo/releases/latest/download");
+    expect(installerScript).toContain("openssl pkeyutl -verify");
+    expect(installerScript).toContain("manifest.json.sig");
     const offline = await SELF.fetch("http://worker.test/t/no-browser-agent", {
       headers: { accept: "text/html" },
     });
