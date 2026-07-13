@@ -42,6 +42,7 @@
       "migrations_dir": "migrations",
     },
   ],
+  "r2_buckets": [{ "binding": "PREVIEWS", "bucket_name": "mtunnel-previews" }],
   "vars": {
     "TUNNEL_DOMAIN": "makarima.xyz",
     "CUSTOM_DOMAIN_CNAME": "cname.makarima.xyz",
