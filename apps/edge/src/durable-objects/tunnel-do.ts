@@ -28,6 +28,7 @@ interface Attachment {
   readonly tunnelId: string;
   readonly publicOrigin: string;
   readonly devRouting: boolean;
+  readonly allowCors: boolean;
   readonly handshakeComplete: boolean;
   readonly organizationId: string;
   readonly userId?: string;
@@ -125,6 +126,7 @@ function isAttachment(value: unknown): value is Attachment {
     typeof record.tunnelId === "string" &&
     typeof record.publicOrigin === "string" &&
     typeof record.devRouting === "boolean" &&
+    typeof record.allowCors === "boolean" &&
     typeof record.handshakeComplete === "boolean" &&
     typeof record.organizationId === "string" &&
     (record.userId === undefined || typeof record.userId === "string") &&
@@ -182,9 +184,23 @@ export class TunnelDO extends DurableObject<Env> {
     switch (request.headers.get("x-mtunnel-op")) {
       case "connect":
         return this.handleConnect(request);
-      default:
-        return this.handleProxy(request);
+      default: {
+        const response = await this.handleProxy(request);
+        if (!this.corsEnabled()) return response;
+        const headers = new Headers(response.headers);
+        headers.set("x-mtunnel-cors", "true");
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      }
     }
+  }
+
+  corsEnabled(): boolean {
+    const socket = this.connectedSocket();
+    return socket === null ? false : (this.attachment(socket)?.allowCors ?? false);
   }
 
   async status(requestTunnelId: string): Promise<{
@@ -246,6 +262,7 @@ export class TunnelDO extends DurableObject<Env> {
       tunnelId,
       publicOrigin,
       devRouting: request.headers.get("x-mtunnel-dev-routing") === "true",
+      allowCors: request.headers.get("x-mtunnel-allow-cors") === "true",
       handshakeComplete: false,
       organizationId,
       userId,

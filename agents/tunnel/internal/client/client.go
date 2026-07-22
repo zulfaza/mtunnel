@@ -52,6 +52,7 @@ type Options struct {
 	AgentVersion    string
 	UsageSource     string
 	OperatingSystem string
+	AllowCors       bool
 	HTTPClient      *http.Client
 	Logger          *slog.Logger
 	InitialBackoff  time.Duration
@@ -133,6 +134,9 @@ func runOnce(parent context.Context, opts Options) (protocol.HelloAck, error) {
 	headers.Set("X-Mtunnel-Usage-Source", opts.UsageSource)
 	headers.Set("X-Mtunnel-Operating-System", opts.OperatingSystem)
 	headers.Set("X-Mtunnel-Agent-Version", opts.AgentVersion)
+	if opts.AllowCors {
+		headers.Set("X-Mtunnel-Allow-Cors", "true")
+	}
 	conn, _, err := websocket.Dial(parent, wsURL, &websocket.DialOptions{
 		HTTPClient: opts.HTTPClient,
 		HTTPHeader: headers,

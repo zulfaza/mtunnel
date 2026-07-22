@@ -58,6 +58,10 @@ export async function forwardConnect(
   headers.set("x-mtunnel-id", tunnelId);
   headers.set("x-mtunnel-public-origin", publicOrigin(url));
   headers.set("x-mtunnel-dev-routing", env.DEV_ROUTING === "true" ? "true" : "false");
+  headers.set(
+    "x-mtunnel-allow-cors",
+    request.headers.get("x-mtunnel-allow-cors") === "true" ? "true" : "false",
+  );
   headers.set("x-mtunnel-organization-id", organizationId);
   headers.set("x-mtunnel-user-id", verified.claims.sub);
   headers.set("x-mtunnel-connection-id", connectionId);
@@ -97,6 +101,46 @@ export async function forwardConnect(
   return response;
 }
 
+function withCors(response: Response, request: Request): Response {
+  const origin = request.headers.get("origin");
+  if (origin === null) return response;
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-origin", origin);
+  headers.set("access-control-allow-credentials", "true");
+  headers.append("vary", "origin");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function preflightResponse(request: Request): Response {
+  const headers = new Headers();
+  const origin = request.headers.get("origin");
+  if (origin !== null) {
+    headers.set("access-control-allow-origin", origin);
+    headers.set("access-control-allow-credentials", "true");
+    headers.append("vary", "origin");
+  }
+  const requestedMethod = request.headers.get("access-control-request-method");
+  headers.set("access-control-allow-methods", requestedMethod ?? "GET, POST, PUT, PATCH, DELETE");
+  const requestedHeaders = request.headers.get("access-control-request-headers");
+  if (requestedHeaders !== null) headers.set("access-control-allow-headers", requestedHeaders);
+  headers.set("access-control-max-age", "86400");
+  return new Response(null, { status: 204, headers });
+}
+
+function stripCorsMarker(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.delete("x-mtunnel-cors");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export async function forwardProxy(
   request: Request,
   env: Env,
@@ -104,6 +148,10 @@ export async function forwardProxy(
   url: URL,
   routeType: "standard_domain" | "custom_domain" | "development_path",
 ): Promise<Response> {
+  const isPreflight =
+    request.method === "OPTIONS" && request.headers.has("access-control-request-method");
+  if (isPreflight && (await env.TUNNELS.getByName(tunnelId).corsEnabled()))
+    return preflightResponse(request);
   const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
   const { success } = await env.PROXY_RATE_LIMITER.limit({ key: `${clientIp}:${tunnelId}` });
   if (!success) return jsonError(429, "rate_limited");
@@ -120,9 +168,12 @@ export async function forwardProxy(
   headers.set("x-mtunnel-id", tunnelId);
   headers.set("x-mtunnel-route-type", routeType);
   const response = await env.TUNNELS.getByName(tunnelId).fetch(doRequest(request, url, headers));
-  if (response.headers.get("x-mtunnel-offline") !== "true") return response;
+  const withCorsApplied =
+    response.headers.get("x-mtunnel-cors") === "true" ? withCors(response, request) : response;
+  if (withCorsApplied.headers.get("x-mtunnel-offline") !== "true")
+    return stripCorsMarker(withCorsApplied);
   offlineUntil.set(offlineKey, now + OFFLINE_CACHE_MS);
-  return responseWithoutOfflineMarker(response);
+  return stripCorsMarker(responseWithoutOfflineMarker(withCorsApplied));
 }
 
 function offlineResponse(request: Request): Response {

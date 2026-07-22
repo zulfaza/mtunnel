@@ -71,7 +71,7 @@ func newHTTPCmd(o *rootOptions) *cobra.Command {
 		}
 		err = agent.Run(ctx, agent.Options{Server: cfg.Server, Secret: accessToken, RefreshToken: cfg.RefreshToken, OnCredentials: func(credentials auth.Credentials) error {
 			return config.Save(o.config, config.Config{Server: cfg.Server, AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken, OrganizationID: cfg.OrganizationID})
-		}, TunnelID: name, OrganizationID: cfg.OrganizationID, Hostname: hostname, Port: port, RequestTimeout: o.requestTimeout, IdleTimeout: o.idleTimeout, Logger: o.logger, UsageSource: usageSource, OnConnected: func(ack protocol.HelloAck, reconnected bool) {
+		}, TunnelID: name, OrganizationID: cfg.OrganizationID, Hostname: hostname, Port: port, RequestTimeout: o.requestTimeout, IdleTimeout: o.idleTimeout, AllowCors: o.allowCors, Logger: o.logger, UsageSource: usageSource, OnConnected: func(ack protocol.HelloAck, reconnected bool) {
 			if first && !reconnected {
 				fmt.Fprintf(cmd.OutOrStdout(), "Tunnel connected\n\nPublic URL:\n%s\n\nForwarding:\nhttp://%s:%d\n", ack.PublicURL, hostname, port)
 				first = false

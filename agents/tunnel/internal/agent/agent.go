@@ -27,6 +27,7 @@ type Options struct {
 	Port           int
 	RequestTimeout time.Duration
 	IdleTimeout    time.Duration // Close the tunnel after this long without a request; 0 disables.
+	AllowCors      bool
 	Logger         *slog.Logger
 	HTTPClient     *http.Client
 	InitialBackoff time.Duration
@@ -108,7 +109,7 @@ func Run(ctx context.Context, opts Options) error {
 			mu.Unlock()
 		}
 	}
-	err := client.Run(ctx, client.Options{Server: opts.Server, Secret: opts.Secret, RefreshToken: opts.RefreshToken, OnCredentials: opts.OnCredentials, TunnelID: opts.TunnelID, OrganizationID: opts.OrganizationID, AgentVersion: "dev", UsageSource: opts.UsageSource, OperatingSystem: runtime.GOOS, HTTPClient: httpClient, Logger: opts.Logger, InitialBackoff: opts.InitialBackoff, OnOpen: onOpen, OnMessage: onMessage})
+	err := client.Run(ctx, client.Options{Server: opts.Server, Secret: opts.Secret, RefreshToken: opts.RefreshToken, OnCredentials: opts.OnCredentials, TunnelID: opts.TunnelID, OrganizationID: opts.OrganizationID, AgentVersion: "dev", UsageSource: opts.UsageSource, OperatingSystem: runtime.GOOS, AllowCors: opts.AllowCors, HTTPClient: httpClient, Logger: opts.Logger, InitialBackoff: opts.InitialBackoff, OnOpen: onOpen, OnMessage: onMessage})
 	if err == client.ErrReplaced {
 		opts.Logger.Warn("tunnel replaced by a newer agent", "tunnelId", opts.TunnelID)
 	}
