@@ -93,6 +93,7 @@ const OFFLINE_CACHE_HEADERS: Readonly<Record<string, string>> = {
   "x-mtunnel-offline": "true",
 };
 const USAGE_FLUSH_MS = 10 * 60 * 1000;
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
 
 interface UsageSummary {
   readonly connectionId: string;
@@ -508,7 +509,11 @@ export class TunnelDO extends DurableObject<Env> {
         this.finish(pending, message.status, "client_disconnected");
       },
     });
-    return new Response(body, { status: message.status, headers });
+    // 101/204/205/304 must carry a null body; handing workerd a stream for one
+    // throws. Keep the stream wired up anyway so response frames still settle
+    // the pending request, just don't attach it.
+    const nullBody = NULL_BODY_STATUSES.has(message.status);
+    return new Response(nullBody ? null : body, { status: message.status, headers });
   }
 
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {

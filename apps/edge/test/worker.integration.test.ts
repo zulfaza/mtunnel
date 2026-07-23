@@ -308,6 +308,33 @@ describe("fake-agent proxy lifecycle", () => {
     }
   });
 
+  it("relays a 204 upstream response without a body", async () => {
+    const agent = await openAgent("nullbody-tunnel");
+    try {
+      const client = SELF.fetch("http://worker.test/t/nullbody-tunnel/preflight", {
+        method: "OPTIONS",
+      });
+      const start = await nextStart(agent);
+      await nextKind(agent, "requestEnd");
+      agent.ws.send(
+        encodeMessage({
+          kind: "responseStart",
+          requestId: start.requestId,
+          status: 204,
+          headers: [["access-control-allow-origin", "*"]],
+          hasBody: false,
+        }),
+      );
+      agent.ws.send(encodeMessage({ kind: "responseEnd", requestId: start.requestId }));
+      const response = await client;
+      expect(response.status).toBe(204);
+      expect(response.body).toBeNull();
+      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    } finally {
+      agent.close();
+    }
+  });
+
   it("hides accept-encoding from the agent and drops upstream compression framing", async () => {
     const agent = await openAgent("encoding-tunnel");
     try {
