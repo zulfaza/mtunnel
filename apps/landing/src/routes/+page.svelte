@@ -27,7 +27,8 @@
     <a class="brand" href="/">m<em>T</em>unnel</a>
     <nav aria-label="Primary navigation">
       <a href="/docs">docs</a>
-      <a href="https://github.com/zulfaza/mtunnel" rel="noreferrer" target="_blank">github</a>
+      <a href="https://app.makarima.xyz/login">login</a>
+      <a href="https://app.makarima.xyz/register">register</a>
     </nav>
   </div>
 
