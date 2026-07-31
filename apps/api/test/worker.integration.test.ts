@@ -121,6 +121,12 @@ function respond(
   agent.ws.send(encodeMessage({ kind: "responseEnd", requestId: start.requestId }));
 }
 
+function startForPath(starts: readonly RequestStartMessage[], path: string): RequestStartMessage {
+  const start = starts.find((candidate) => candidate.path === path);
+  if (start === undefined) throw new Error(`missing request start for ${path}`);
+  return start;
+}
+
 describe("edge Worker routes", () => {
   it("returns health", async () => {
     const response = await SELF.fetch("http://worker.test/health");
@@ -379,8 +385,9 @@ describe("fake-agent proxy lifecycle", () => {
     try {
       const first = SELF.fetch("http://worker.test/t/multiplex-tunnel/first");
       const second = SELF.fetch("http://worker.test/t/multiplex-tunnel/second");
-      const one = await nextStart(agent);
-      const two = await nextStart(agent);
+      const starts = [await nextStart(agent), await nextStart(agent)];
+      const one = startForPath(starts, "/first");
+      const two = startForPath(starts, "/second");
       expect(one.requestId).not.toEqual(two.requestId);
       respond(agent, two, "second");
       respond(agent, one, "first");
