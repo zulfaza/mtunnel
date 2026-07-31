@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/config"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/config"
 )
 
 func TestDomainAddRefreshesExpiredAccessToken(t *testing.T) {

@@ -7,7 +7,7 @@ SaaS enabled on the `makarima.xyz` zone. Configure an active fallback origin.
 
 ## Configure
 
-Edit `apps/edge/wrangler.jsonc`:
+Edit `apps/api/wrangler.jsonc`:
 
 1. Set `TUNNEL_DOMAIN=makarima.xyz`, `PREVIEW_DOMAIN=preview.makarima.xyz`, `CUSTOM_DOMAIN_CNAME=cname.makarima.xyz`, and replace `WORKOS_CLIENT_ID` with the production application Client ID. The Worker derives the token issuer as `https://api.workos.com/user_management/<WORKOS_CLIENT_ID>`.
 2. Review request, response, pending-request, timeout, and heartbeat limits.
@@ -19,7 +19,7 @@ Edit `apps/edge/wrangler.jsonc`:
 Create a high-entropy root secret and upload it without putting it in source:
 
 ```sh
-cd apps/edge
+cd apps/api
 openssl rand -base64 48
 pnpm exec wrangler secret put AUTH_SECRET
 pnpm exec wrangler secret put WORKOS_API_KEY
@@ -74,6 +74,11 @@ internal agent tokens; users never receive it.
 
 ## DNS and routes
 
+Deploy three Workers: `mtunnel-landing` at `makarima.xyz` (and `www`),
+`mtunnel-dashboard` at `app.makarima.xyz`, and `mtunnel-api` at
+`api.makarima.xyz`. Keep the API wildcard route for tunnel and preview hosts;
+Cloudflare selects the explicit application host routes over that wildcard.
+
 Create proxied DNS records for the tunnel base hostname and wildcard hostname,
 then configure Worker routes covering both:
 
@@ -102,17 +107,17 @@ rule for the tunnel domain.
 ## Deploy and verify
 
 ```sh
-cd apps/edge
+cd apps/api
 pnpm run deploy
-curl https://tunnel.example.com/health
+curl https://api.makarima.xyz/health
 ```
 
 Expected health response: `{"status":"ok"}`. Then configure the agent:
 
 ```sh
-./agents/tunnel/bin/mt login
-./agents/tunnel/bin/mt http 3000 --name demo-tunnel
-./agents/tunnel/bin/mt status demo-tunnel
+./apps/cli/bin/mt login
+./apps/cli/bin/mt http 3000 --name demo-tunnel
+./apps/cli/bin/mt status demo-tunnel
 ```
 
 Verify TLS, duplicate Set-Cookie behavior, cache response headers, reconnect after

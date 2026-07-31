@@ -48,7 +48,7 @@ function startEdge() {
     "pnpm",
     [
       "--dir",
-      "apps/edge",
+      "apps/api",
       "exec",
       "wrangler",
       "dev",
@@ -100,10 +100,10 @@ const upstream = createServer(async (request, response) => {
 let edge;
 let agent;
 try {
-  checked("make", ["-C", "agents/tunnel", "build"]);
+  checked("make", ["-C", "apps/cli", "build"]);
   checked("pnpm", [
     "--dir",
-    "apps/edge",
+    "apps/api",
     "exec",
     "wrangler",
     "d1",
@@ -120,7 +120,7 @@ try {
     "Worker health",
     async () => (await fetch(`http://127.0.0.1:${edgePort}/health`)).ok,
   );
-  agent = child("agents/tunnel/bin/mt", [
+  agent = child("apps/cli/bin/mt", [
     "http",
     String(upstreamPort),
     "--server",

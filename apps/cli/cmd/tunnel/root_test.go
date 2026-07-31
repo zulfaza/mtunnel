@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/lmittmann/tint"
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/config"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/config"
 )
 
 func TestDefaultHostnameUsesLocalhost(t *testing.T) {

@@ -1,0 +1,13 @@
+{
+  "name": "@tunnel/assets",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "logo-512x512.png",
+    "tokens.css"
+  ],
+  "exports": {
+    "./logo-512x512.png": "./logo-512x512.png",
+    "./tokens.css": "./tokens.css"
+  }
+}

@@ -8,7 +8,7 @@ The edge Worker sends operational product events to PostHog. Analytics is disabl
 Create a PostHog project, copy its project API key, and add it as a Worker secret:
 
 ```sh
-cd apps/edge
+cd apps/api
 pnpm exec wrangler secret put POSTHOG_API_KEY
 ```
 

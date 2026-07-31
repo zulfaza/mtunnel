@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mtunnel-landing",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "assets": {
+    "directory": ".svelte-kit/cloudflare",
+    "binding": "ASSETS",
+  },
+  "compatibility_date": "2026-07-01",
+  "routes": [
+    {
+      "pattern": "makarima.xyz",
+      "custom_domain": true,
+    },
+    {
+      "pattern": "www.makarima.xyz",
+      "custom_domain": true,
+    },
+  ],
+}

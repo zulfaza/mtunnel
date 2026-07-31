@@ -11,7 +11,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/config"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/config"
 )
 
 type organization struct {

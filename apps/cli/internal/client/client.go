@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/auth"
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/protocol"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/auth"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/protocol"
 )
 
 var ErrReplaced = errors.New("tunnel connection replaced by another agent")

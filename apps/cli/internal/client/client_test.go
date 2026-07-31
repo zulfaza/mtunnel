@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/protocol"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/protocol"
 )
 
 func writeServerMessage(ctx context.Context, conn *websocket.Conn, m protocol.Message) error {

@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "tunnel-edge",
+  "name": "mtunnel-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-01",
   "assets": {
@@ -99,7 +99,7 @@
       "custom_domain": false,
     },
     {
-      "pattern": "makarima.xyz",
+      "pattern": "api.makarima.xyz",
       "custom_domain": true,
     },
     {

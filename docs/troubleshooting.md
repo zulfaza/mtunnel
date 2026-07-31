@@ -4,7 +4,7 @@
 
 - Confirm the server URL includes `http://` or `https://`.
 - Confirm `AUTH_SECRET` matches the Worker secret. Development defaults belong in
-  `apps/edge/.dev.vars`, not the shell environment alone.
+  `apps/api/.dev.vars`, not the shell environment alone.
 - Check `/health` independently.
 - A `401` means the root secret is missing or wrong; a network error usually means
   the Worker URL, DNS, TLS, or local Wrangler process is unavailable.

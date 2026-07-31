@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/protocol"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/protocol"
 )
 
 type SendFunc func(protocol.Message) error

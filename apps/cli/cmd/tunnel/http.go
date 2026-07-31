@@ -14,10 +14,10 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/agent"
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/auth"
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/config"
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/protocol"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/agent"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/auth"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/config"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/protocol"
 )
 
 func newHTTPCmd(o *rootOptions) *cobra.Command {

@@ -1,0 +1,8 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mtunnel-dashboard",
+  "main": "@tanstack/react-start/server-entry",
+  "compatibility_date": "2026-07-31",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [{ "pattern": "app.makarima.xyz", "custom_domain": true }],
+}

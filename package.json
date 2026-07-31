@@ -10,10 +10,14 @@
     "typecheck": "turbo typecheck",
     "format": "oxfmt --check .",
     "format:write": "oxfmt --write .",
-    "dev:edge": "turbo dev --filter=@tunnel/edge",
-    "test:edge": "turbo test --filter=@tunnel/edge",
-    "build:agent": "make -C agents/tunnel build",
-    "test:agent": "make -C agents/tunnel test",
+    "dev:api": "turbo dev --filter=@tunnel/api",
+    "dev:landing": "turbo dev --filter=@tunnel/landing",
+    "dev:dashboard": "turbo dev --filter=@tunnel/dashboard",
+    "test:api": "turbo test --filter=@tunnel/api",
+    "test:landing": "turbo test --filter=@tunnel/landing",
+    "test:dashboard": "turbo test --filter=@tunnel/dashboard",
+    "build:cli": "make -C apps/cli build",
+    "test:cli": "make -C apps/cli test",
     "test:e2e": "node scripts/e2e.mjs"
   },
   "devDependencies": {

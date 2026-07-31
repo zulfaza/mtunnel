@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/auth"
-	"github.com/zulfaza/mtunnel/agents/tunnel/internal/config"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/auth"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/config"
 )
 
 func newLoginCmd(o *rootOptions) *cobra.Command {

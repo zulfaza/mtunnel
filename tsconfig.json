@@ -7,6 +7,8 @@
   "references": [
     { "path": "packages/protocol" },
     { "path": "packages/config" },
-    { "path": "apps/edge" }
+    { "path": "apps/api" },
+    { "path": "apps/landing" },
+    { "path": "apps/dashboard" }
   ]
 }

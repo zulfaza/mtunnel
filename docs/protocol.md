@@ -18,7 +18,7 @@ It multiplexes two kinds of traffic over that one connection:
 Every frame is self-describing (type, request id, length) so many requests
 can be interleaved on the same connection without a separate stream-id
 negotiation step. The format is implemented identically in TypeScript
-(`packages/protocol`) and Go (`agents/tunnel/internal/protocol`); the two
+(`packages/protocol`) and Go (`apps/cli/internal/protocol`); the two
 implementations are cross-checked against a shared fixture file
 (`packages/protocol/fixtures/frames.json`) to guarantee byte-for-byte
 compatibility.
@@ -247,7 +247,7 @@ must be split into a sequence of `RequestBody`/`ResponseBody` frames, each no
 larger than `MAX_FRAME_PAYLOAD_BYTES`, followed by a terminating
 `RequestEnd`/`ResponseEnd` frame. Both implementations expose a helper for
 this: `chunkPayload` (TypeScript, `packages/protocol/src/chunk.ts`) and
-`ChunkPayload` (Go, `agents/tunnel/internal/protocol/helpers.go`). Both split
+`ChunkPayload` (Go, `apps/cli/internal/protocol/helpers.go`). Both split
 `data` into chunks of at most `max` bytes (defaulting to
 `MAX_FRAME_PAYLOAD_BYTES`), and both yield zero chunks (not a single empty
 chunk) for empty input — so an empty body produces no `*Body` frames, just

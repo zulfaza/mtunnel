@@ -23,8 +23,8 @@ every step, and the design decisions that are already locked in. Read
 
 "Verified" means all of the following passed at the end of the phase, run from the
 repo root: `pnpm lint`, `pnpm format --check`, `pnpm typecheck`, `pnpm build`,
-`pnpm test`, `pnpm build:agent`, and `go test ./... && go vet ./...` in
-`agents/tunnel`.
+`pnpm test`, `pnpm build:cli`, and `go test ./... && go vet ./...` in
+`apps/cli`.
 
 Git note: the worktree is intentionally **not committed** and contains both staged
 and unstaged work — the repo owner decides when to stage and commit.
@@ -100,12 +100,12 @@ base64url(claimsJSON)))`. Claims: `{sub, tunnelId, purpose: "agent", iat, exp}`,
 All done and verified:
 
 - [x] pnpm workspaces (`apps/*`, `packages/*`) + Turborepo (build/test/lint/typecheck cached)
-- [x] Root scripts: `dev`, `build`, `test`, `lint`, `format` (oxfmt, `--check` passes through), `typecheck`, `dev:edge`, `test:edge`, `build:agent`, `test:agent`
+- [x] Root scripts: `dev`, `build`, `test`, `lint`, `format` (oxfmt, `--check` passes through), `typecheck`, `dev:api`, `test:api`, `build:cli`, `test:cli`
 - [x] `packages/tsconfig` (`@tunnel/tsconfig/base.json`, all strict flags)
 - [x] `packages/config` — default limits and TTL constants
 - [x] `packages/shared` — `TUNNEL_ID_PATTERN`, `isValidTunnelId`
-- [x] `apps/edge` — minimal Worker with `GET /health` → `{"status":"ok"}`, wrangler.jsonc (name `tunnel-edge`, compat date 2026-07-01, observability), `.dev.vars.example` (`AUTH_SECRET=development-token`, `DEV_ROUTING=true`, `TUNNEL_DOMAIN=tunnel.example.com`)
-- [x] `agents/tunnel` — Go module `github.com/zulfaza/mtunnel/agents/tunnel` (go 1.25), Makefile (build/test/vet/clean), placeholder `main.go`
+- [x] `apps/api` — minimal Worker with `GET /health` → `{"status":"ok"}`, wrangler.jsonc (name `tunnel-edge`, compat date 2026-07-01, observability), `.dev.vars.example` (`AUTH_SECRET=development-token`, `DEV_ROUTING=true`, `TUNNEL_DOMAIN=tunnel.example.com`)
+- [x] `apps/cli` — Go module `github.com/zulfaza/mtunnel/apps/cli` (go 1.25), Makefile (build/test/vet/clean), placeholder `main.go`
 - [x] `.editorconfig`, `.gitignore`, `.env.example`, stub `README.md`
 
 Notes for successors: `pnpm-workspace.yaml` has `onlyBuiltDependencies`
@@ -117,7 +117,7 @@ Notes for successors: `pnpm-workspace.yaml` has `onlyBuiltDependencies`
 All done and verified:
 
 - [x] TypeScript codec in `packages/protocol` (`encodeFrame`/`decodeFrame`, typed `Message` union with `encodeMessage`/`decodeMessage`, `ProtocolError` codes, `chunkPayload`, request-id helpers; zero runtime deps, Workers-safe)
-- [x] Go codec in `agents/tunnel/internal/protocol` (mirrors TS exactly; stdlib only)
+- [x] Go codec in `apps/cli/internal/protocol` (mirrors TS exactly; stdlib only)
 - [x] Cross-language fixtures `packages/protocol/fixtures/frames.json` — 15 valid + 4 invalid cases; generator in `packages/protocol/scripts/gen-fixtures.mjs`
 - [x] Both suites decode/roundtrip every fixture: 71 vitest tests, Go fixture + unit tests, all green
 - [x] `packages/config` re-exports `MAX_FRAME_PAYLOAD_BYTES` from `@tunnel/protocol` (protocol owns frame constants)
@@ -125,7 +125,7 @@ All done and verified:
 
 ## Phase 3 — Edge (Worker + Durable Object) ✅
 
-Done and verified in `apps/edge/src/{auth,durable-objects,routing,utils}`:
+Done and verified in `apps/api/src/{auth,durable-objects,routing,utils}`:
 
 - [x] `POST /api/v1/auth/token` — authenticated by `Authorization: Bearer <AUTH_SECRET>`; body `{tunnelId, sub?}`; validates tunnel id; returns `{token, tunnelId, expiresAt}`
 - [x] `GET /api/v1/tunnels/:id/connect` — WebSocket upgrade; validates token (sig/exp/tunnel/purpose); forwards to the tunnel's DO
@@ -139,7 +139,7 @@ Done and verified in `apps/edge/src/{auth,durable-objects,routing,utils}`:
 
 ## Phase 4 — Go agent ✅
 
-Done and verified in `agents/tunnel/{cmd,internal/{agent,auth,client,config,proxy}}`:
+Done and verified in `apps/cli/{cmd,internal/{agent,auth,client,config,proxy}}`:
 
 - [x] Cobra CLI, binary `mt`: `login`, `http <port>`, `status`, `version`
 - [x] Flags: `--server`, `--token`, `--config`, `--hostname`, `--name`, `--request-timeout`, `--log-level`
@@ -181,7 +181,7 @@ pnpm format --check
 pnpm typecheck
 pnpm test
 pnpm build
-pnpm build:agent
-pnpm test:agent
-cd agents/tunnel && go test ./... && go vet ./...
+pnpm build:cli
+pnpm test:cli
+cd apps/cli && go test ./... && go vet ./...
 ```

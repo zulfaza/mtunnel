@@ -2,8 +2,8 @@
 
 ## Repository layout
 
-- `apps/edge` — Worker, Durable Object, routing, authentication, and edge tests
-- `agents/tunnel` — Go CLI, connection manager, and local HTTP proxy
+- `apps/api` — Worker, Durable Object, routing, authentication, and API tests
+- `apps/cli` — Go CLI, connection manager, and local HTTP proxy
 - `packages/protocol` — TypeScript protocol codec and shared fixtures
 - `packages/config` — default limits
 - `packages/shared` — tunnel ID validation
@@ -13,11 +13,11 @@
 
 ```sh
 pnpm install
-cp apps/edge/.dev.vars.example apps/edge/.dev.vars
-pnpm build:agent
+cp apps/api/.dev.vars.example apps/api/.dev.vars
+pnpm build:cli
 ```
 
-Run the Worker with `pnpm dev:edge`. The development configuration uses
+Run the API Worker with `pnpm dev:api`. The development configuration uses
 `DEV_AUTH_SECRET=development-token` (a login backdoor, distinct from the
 `AUTH_SECRET` that signs agent tokens), path routing, and the URL form
 `/t/<tunnel-id>/...`. Never reuse the development secret in a deployment.
@@ -28,7 +28,7 @@ Run the root verification commands listed in the README before handing off a
 phase. Go-only work can use:
 
 ```sh
-cd agents/tunnel
+cd apps/cli
 go test ./...
 go vet ./...
 ```

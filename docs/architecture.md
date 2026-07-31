@@ -11,7 +11,7 @@ flowchart LR
     Agent --> Local[Local HTTP server]
 ```
 
-- The Worker validates API input, derives the tunnel ID from the production
+- The API Worker validates API input, derives the tunnel ID from the production
   hostname or development path, and obtains the named Durable Object stub.
 - The Durable Object owns the agent WebSocket and in-memory pending-request map.
   It stores connection metadata, never request or response bodies.
@@ -57,3 +57,9 @@ artifacts; tunnel traffic remains unpersisted. Durable Object storage holds only
 tunnel metadata. Bodies stream in frames no larger than 256 KiB. Default aggregate
 limits are 50 MiB per request, 100 MiB per response, 32 pending requests, and 30
 seconds to response start or between response chunks.
+
+## Public applications
+
+- `makarima.xyz` is the SvelteKit landing Worker (`mtunnel-landing`).
+- `app.makarima.xyz` is the TanStack Start dashboard Worker (`mtunnel-dashboard`).
+- `api.makarima.xyz` and tunnel wildcard hosts are served by `mtunnel-api`.

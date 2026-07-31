@@ -41,7 +41,7 @@ pnpm format --check
 pnpm typecheck
 pnpm test
 pnpm build
-cd agents/tunnel && go test ./... && go vet ./...
+cd apps/cli && go test ./... && go vet ./...
 pnpm test:e2e
 ```
 

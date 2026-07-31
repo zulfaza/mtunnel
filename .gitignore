@@ -2,9 +2,10 @@ node_modules
 dist
 .turbo
 .wrangler
+.svelte-kit
 .dev.vars
 coverage
-agents/tunnel/bin
+apps/cli/bin
 .env
 *.tsbuildinfo
 /.agents/

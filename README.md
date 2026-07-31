@@ -1,7 +1,7 @@
 # mtunnel
 
 mtunnel is a small, self-hosted development tunnel for exposing a local HTTP
-server through Cloudflare. A Worker routes public traffic to one Durable Object
+server through Cloudflare. The API Worker routes public traffic to one Durable Object
 per tunnel; a Go agent maintains a hibernatable WebSocket connection and streams
 requests to localhost.
 
@@ -44,20 +44,23 @@ Install dependencies and build the agent:
 
 ```sh
 pnpm install
-pnpm build:agent
+pnpm build:cli
 ```
 
-Create `apps/edge/.dev.vars` from the example, then start the Worker:
+Create `apps/api/.dev.vars` from the example, then start the API Worker:
 
 ```sh
-cp apps/edge/.dev.vars.example apps/edge/.dev.vars
-pnpm dev:edge
+cp apps/api/.dev.vars.example apps/api/.dev.vars
+pnpm dev:api
 ```
+
+The marketing site and asset dashboard run separately with `pnpm dev:landing`
+and `pnpm dev:dashboard`.
 
 In another terminal, start a local application and the tunnel agent:
 
 ```sh
-./agents/tunnel/bin/mt http 3000 \
+./apps/cli/bin/mt http 3000 \
   --server http://127.0.0.1:8787 \
   --token development-token \
   --name local-test
@@ -83,15 +86,15 @@ enabled only when `DEV_ROUTING=true`.
 Persist WorkOS credentials in a mode-0600 config file:
 
 ```sh
-./agents/tunnel/bin/mt login
+./apps/cli/bin/mt login
 ```
 
 Then open or inspect a named tunnel:
 
 ```sh
-./agents/tunnel/bin/mt http 3000 --name demo-tunnel
-./agents/tunnel/bin/mt status demo-tunnel
-./agents/tunnel/bin/mt version
+./apps/cli/bin/mt http 3000 --name demo-tunnel
+./apps/cli/bin/mt status demo-tunnel
+./apps/cli/bin/mt version
 ```
 
 For project tunnels, create `mtunnel.config.json` in the current directory or
@@ -130,8 +133,8 @@ pnpm format
 pnpm typecheck
 pnpm test
 pnpm build
-pnpm build:agent
-pnpm test:agent
+pnpm build:cli
+pnpm test:cli
 pnpm test:e2e
 ```
 
