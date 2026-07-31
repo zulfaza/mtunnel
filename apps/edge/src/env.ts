@@ -6,6 +6,7 @@ export interface Env {
   readonly TUNNELS: DurableObjectNamespace<TunnelDO>;
   readonly REGISTRY: DurableObjectNamespace<RegistryDO>;
   readonly DOMAINS: D1Database;
+  readonly PREVIEWS: R2Bucket;
   readonly AUTH_RATE_LIMITER: RateLimit;
   readonly PROXY_RATE_LIMITER: RateLimit;
   readonly AUTH_SECRET?: string;
@@ -16,6 +17,7 @@ export interface Env {
   readonly CLOUDFLARE_API_TOKEN?: string;
   readonly CLOUDFLARE_ZONE_ID?: string;
   readonly TUNNEL_DOMAIN: string;
+  readonly PREVIEW_DOMAIN: string;
   readonly CUSTOM_DOMAIN_CNAME: string;
   readonly DEV_ROUTING: string;
   readonly REQUEST_TIMEOUT_MS?: string;
@@ -26,4 +28,7 @@ export interface Env {
   readonly HEARTBEAT_TIMEOUT_MS?: string;
   readonly POSTHOG_API_KEY?: string;
   readonly POSTHOG_HOST?: string;
+  readonly MAX_PREVIEW_FILE_BYTES?: string;
+  readonly MAX_PREVIEW_FILES?: string;
+  readonly PREVIEW_TTL_SECONDS?: string;
 }

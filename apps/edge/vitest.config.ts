@@ -16,6 +16,7 @@ export default defineConfig({
           DEV_AUTH_SECRET: "development-token",
           WORKOS_CLIENT_ID: "client_test",
           TUNNEL_DOMAIN: "worker.test",
+          PREVIEW_DOMAIN: "preview.worker.test",
           CUSTOM_DOMAIN_CNAME: "cname.worker.test",
           DEV_ROUTING: "true",
           REQUEST_TIMEOUT_MS: "100",

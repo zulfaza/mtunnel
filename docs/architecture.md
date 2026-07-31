@@ -52,7 +52,8 @@ hibernation. A new connection for the same tunnel closes the old one with code 4
 
 ## State and bounds
 
-There is no database, global coordinator, queue, KV, R2, Redis, or cache. Durable
-Object storage holds only tunnel metadata. Bodies stream in frames no larger than
-256 KiB. Default aggregate limits are 50 MiB per request, 100 MiB per response,
-32 pending requests, and 30 seconds to response start or between response chunks.
+D1 holds custom-domain and preview metadata. R2 is used only for public preview
+artifacts; tunnel traffic remains unpersisted. Durable Object storage holds only
+tunnel metadata. Bodies stream in frames no larger than 256 KiB. Default aggregate
+limits are 50 MiB per request, 100 MiB per response, 32 pending requests, and 30
+seconds to response start or between response chunks.

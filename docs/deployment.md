@@ -9,7 +9,7 @@ SaaS enabled on the `makarima.xyz` zone. Configure an active fallback origin.
 
 Edit `apps/edge/wrangler.jsonc`:
 
-1. Set `TUNNEL_DOMAIN=makarima.xyz`, `CUSTOM_DOMAIN_CNAME=cname.makarima.xyz`, and replace `WORKOS_CLIENT_ID` with the production application Client ID. The Worker derives the token issuer as `https://api.workos.com/user_management/<WORKOS_CLIENT_ID>`.
+1. Set `TUNNEL_DOMAIN=makarima.xyz`, `PREVIEW_DOMAIN=preview.makarima.xyz`, `CUSTOM_DOMAIN_CNAME=cname.makarima.xyz`, and replace `WORKOS_CLIENT_ID` with the production application Client ID. The Worker derives the token issuer as `https://api.workos.com/user_management/<WORKOS_CLIENT_ID>`.
 2. Review request, response, pending-request, timeout, and heartbeat limits.
 3. Replace the placeholder route comments with routes for the base and wildcard
    hostnames appropriate to your zone.
@@ -44,6 +44,15 @@ Create the D1 database and copy its ID into `wrangler.jsonc`:
 ```sh
 pnpm exec wrangler d1 create mtunnel-domains
 ```
+
+Create the preview artifact bucket once, before deploy:
+
+```sh
+pnpm exec wrangler r2 bucket create mtunnel-previews
+```
+
+The Worker cron runs hourly to remove expired previews. `preview.makarima.xyz` is
+already covered by the wildcard route, so it needs no extra DNS or certificate setup.
 
 The deployment command applies all pending remote D1 migrations before
 deploying the Worker. If a migration fails, the Worker is not deployed.

@@ -9,6 +9,11 @@ describe("organization access", () => {
       maximumActiveTunnels: 3,
       idleTimeoutSeconds: 900,
       maximumTunnelLifetimeSeconds: 3600,
+      maximumPreviews: 20,
+      maximumPreviewBytes: 2 * 1024 * 1024 * 1024,
+      maximumPreviewFileBytes: 100 * 1024 * 1024,
+      maximumPreviewFiles: 500,
+      previewTTLSeconds: 7 * 24 * 60 * 60,
     });
   });
 
@@ -24,6 +29,11 @@ describe("organization access", () => {
       maximumActiveTunnels: null,
       idleTimeoutSeconds: 0,
       maximumTunnelLifetimeSeconds: 0,
+      maximumPreviews: null,
+      maximumPreviewBytes: null,
+      maximumPreviewFileBytes: 100 * 1024 * 1024,
+      maximumPreviewFiles: null,
+      previewTTLSeconds: 30 * 24 * 60 * 60,
     });
   });
 });

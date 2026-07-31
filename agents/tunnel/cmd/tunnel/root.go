@@ -58,7 +58,7 @@ func newRootCmd() *cobra.Command {
 	flags.DurationVar(&o.idleTimeout, "idle-timeout", 15*time.Minute, "close tunnel after this long without a request (0 disables)")
 	flags.BoolVar(&o.allowCors, "allow-cors", false, "answer CORS preflight requests and add permissive CORS headers at the edge")
 	flags.StringVar(&o.logLevel, "log-level", "info", "debug, info, warn, or error")
-	cmd.AddCommand(newLoginCmd(o), newHTTPCmd(o), newStatusCmd(o), newDomainCmd(o), newOrganizationCmd(o), newUpdateCmd(), newVersionCmd())
+	cmd.AddCommand(newLoginCmd(o), newHTTPCmd(o), newStatusCmd(o), newDomainCmd(o), newPreviewCmd(o), newOrganizationCmd(o), newUpdateCmd(), newVersionCmd())
 	return cmd
 }
 

@@ -14,6 +14,14 @@ import {
 } from "./domains.js";
 import { handleOrganizationCreate, handleOrganizationList } from "./organizations.js";
 import { handleTunnelStatus } from "./tunnels.js";
+import {
+  handlePreviewCreate,
+  handlePreviewDelete,
+  handlePreviewList,
+  handlePreviewUpload,
+  previewIDFromPath,
+  previewUploadPath,
+} from "./previews.js";
 
 export async function handleApi(
   request: Request,
@@ -31,6 +39,10 @@ export async function handleApi(
     return handleToken(request, env);
   if (request.method === "POST" && url.pathname === "/api/v1/domains")
     return handleDomainAdd(request, env);
+  if (request.method === "POST" && url.pathname === "/api/v1/previews")
+    return handlePreviewCreate(request, env);
+  if (request.method === "GET" && url.pathname === "/api/v1/previews")
+    return handlePreviewList(request, env);
   if (request.method === "GET" && url.pathname === "/api/v1/domains")
     return handleDomainList(request, env);
   if (request.method === "GET" && url.pathname === "/api/v1/organizations")
@@ -40,6 +52,12 @@ export async function handleApi(
   const requestedDomainHostname = domainHostname(url.pathname);
   if (request.method === "DELETE" && requestedDomainHostname !== null)
     return handleDomainDelete(request, env, requestedDomainHostname);
+  const previewUpload = previewUploadPath(url.pathname);
+  if (request.method === "PUT" && previewUpload !== null)
+    return handlePreviewUpload(request, env, previewUpload.id, previewUpload.path);
+  const previewID = previewIDFromPath(url.pathname);
+  if (request.method === "DELETE" && previewID !== null)
+    return handlePreviewDelete(request, env, previewID);
   const requestedDomainAction = domainAction(url.pathname);
   if (
     requestedDomainAction !== null &&
@@ -74,6 +92,10 @@ export function trackedApiEvent(request: Request, url: URL): TrackedEvent | null
     return { event: "tunnel_claim_requested" };
   if (request.method === "POST" && url.pathname === "/api/v1/domains")
     return { event: "custom_domain_add_requested" };
+  if (request.method === "POST" && url.pathname === "/api/v1/previews")
+    return { event: "preview_created" };
+  if (request.method === "DELETE" && previewIDFromPath(url.pathname) !== null)
+    return { event: "preview_deleted" };
   if (request.method === "POST" && url.pathname === "/api/v1/organizations")
     return { event: "organization_create_requested" };
   if (request.method === "DELETE" && domainHostname(url.pathname) !== null)

@@ -5,6 +5,11 @@ export interface OrganizationLimits {
   readonly maximumActiveTunnels: number | null;
   readonly idleTimeoutSeconds: number;
   readonly maximumTunnelLifetimeSeconds: number;
+  readonly maximumPreviews: number | null;
+  readonly maximumPreviewBytes: number | null;
+  readonly maximumPreviewFileBytes: number;
+  readonly maximumPreviewFiles: number | null;
+  readonly previewTTLSeconds: number;
 }
 
 const RESTRICTED_LIMITS: OrganizationLimits = {
@@ -12,6 +17,11 @@ const RESTRICTED_LIMITS: OrganizationLimits = {
   maximumActiveTunnels: 3,
   idleTimeoutSeconds: 15 * 60,
   maximumTunnelLifetimeSeconds: 60 * 60,
+  maximumPreviews: 20,
+  maximumPreviewBytes: 2 * 1024 * 1024 * 1024,
+  maximumPreviewFileBytes: 100 * 1024 * 1024,
+  maximumPreviewFiles: 500,
+  previewTTLSeconds: 7 * 24 * 60 * 60,
 };
 
 const UNRESTRICTED_LIMITS: OrganizationLimits = {
@@ -19,6 +29,11 @@ const UNRESTRICTED_LIMITS: OrganizationLimits = {
   maximumActiveTunnels: null,
   idleTimeoutSeconds: 0,
   maximumTunnelLifetimeSeconds: 0,
+  maximumPreviews: null,
+  maximumPreviewBytes: null,
+  maximumPreviewFileBytes: 100 * 1024 * 1024,
+  maximumPreviewFiles: null,
+  previewTTLSeconds: 30 * 24 * 60 * 60,
 };
 
 export async function limitsForOrganization(

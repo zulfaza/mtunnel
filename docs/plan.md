@@ -36,8 +36,9 @@ Internet → Cloudflare Worker → Durable Object (one per tunnel, resolved via
 env.TUNNELS.getByName(tunnelId)) → persistent WebSocket → Go agent → localhost
 ```
 
-No global coordinator, no external database, no Redis, no Queues, no R2, no KV, no
-Cloudflare Containers, **no caching layer** (never call the Cache API). Target cost:
+No global coordinator, Redis, Queues, KV, Cloudflare Containers, **no caching layer**
+(never call the Cache API). D1 and R2 are limited to custom-domain records and public
+preview metadata/artifacts; tunnel traffic stays unpersisted. Target cost:
 Workers Paid plan, under USD $8/month for light personal use.
 
 ## Locked-in design decisions

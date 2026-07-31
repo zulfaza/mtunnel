@@ -26,6 +26,9 @@ version, OS, and Cloudflare-derived country, region, city, timezone, and colo.
 usage, method, status, duration, byte counts, success, and a low-cardinality error code. It does
 not include request URLs, headers, local upstream addresses, IP addresses, tokens, or config paths.
 
+`preview created` and `preview deleted` measure preview lifecycle requests. They are anonymous API
+funnel events and include only status/success metadata.
+
 ## Suggested insights
 
 Use `tunnel connected` as the activity event for these insights:

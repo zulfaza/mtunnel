@@ -9,6 +9,8 @@ import { markDomainUsed } from "./routes/(api)/domains.js";
 import { handleSiteRequest, siteNotFound, trackedSiteEvent } from "./routes/(web)/site.js";
 import { forwardProxy } from "./routes/(tunnel)/proxy.js";
 import type { TrackedEvent } from "./routes/tracked-event.js";
+import { servePreview } from "./routes/(preview)/serve.js";
+import { cleanupExpiredPreviews } from "./routes/(api)/previews.js";
 
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
@@ -19,6 +21,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   if (siteResponse !== null) return siteResponse;
 
   if (url.pathname.startsWith("/api/v1")) return handleApi(request, env, ctx, url);
+
+  if (hostname === env.PREVIEW_DOMAIN.toLowerCase()) return servePreview(request, env, url);
 
   const hostTunnelId = tunnelIdFromHost(request.headers.get("host"), env.TUNNEL_DOMAIN);
   if (hostTunnelId !== null)
@@ -63,4 +67,12 @@ async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise
 }
 
 export { RegistryDO, TunnelDO };
-export default { fetch } satisfies ExportedHandler<Env>;
+async function scheduled(
+  _controller: ScheduledController,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<void> {
+  ctx.waitUntil(cleanupExpiredPreviews(env));
+}
+
+export default { fetch, scheduled } satisfies ExportedHandler<Env>;
