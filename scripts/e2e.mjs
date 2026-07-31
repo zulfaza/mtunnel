@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import process from "node:process";
 
 const root = new URL("..", import.meta.url).pathname;
+const devVarsPath = new URL("../apps/api/.dev.vars.example", import.meta.url).pathname;
 const edgePort = Number.parseInt(process.env.MTUNNEL_E2E_EDGE_PORT ?? "18787", 10);
 const upstreamPort = Number.parseInt(process.env.MTUNNEL_E2E_UPSTREAM_PORT ?? "18788", 10);
 const tunnelId = `local-test-${process.pid}`;
@@ -52,16 +53,12 @@ function startEdge() {
       "exec",
       "wrangler",
       "dev",
+      "--config",
+      "wrangler.test.jsonc",
+      "--env-file",
+      devVarsPath,
       "--port",
       String(edgePort),
-      "--var",
-      `AUTH_SECRET:${secret}`,
-      "--var",
-      "AUTH_MODE:development",
-      "--var",
-      "DEV_ROUTING:true",
-      "--var",
-      "REQUEST_TIMEOUT_MS:500",
     ],
     { env: { ...process.env, WRANGLER_LOG: "error" } },
   );
@@ -110,6 +107,8 @@ try {
     "migrations",
     "apply",
     "mtunnel-domains",
+    "--config",
+    "wrangler.test.jsonc",
     "--local",
   ]);
   upstream.listen(upstreamPort, "127.0.0.1");
