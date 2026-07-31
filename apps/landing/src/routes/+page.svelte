@@ -123,7 +123,7 @@
 </div>
 
 <style>
-  @import url("https://cdn.jsdelivr.net/fontsource/fonts/geist-mono:vf@latest/latin-wght-normal.woff2");
+  @font-face { font-family: "Geist Mono"; font-display: swap; font-style: normal; font-weight: 100 900; src: url("https://cdn.jsdelivr.net/fontsource/fonts/geist-mono:vf@latest/latin-wght-normal.woff2") format("woff2-variations"); }
   :global(*) { box-sizing: border-box; margin: 0; }
   :global(html) { scroll-behavior: smooth; }
   :global(body) { min-height: 100svh; background-color: var(--background); background-image: linear-gradient(to right, var(--grid) 1px, transparent 1px), linear-gradient(to bottom, var(--grid) 1px, transparent 1px); background-size: 100% 2.75rem, 2.75rem 100%; color: var(--foreground); font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; line-height: 1.75rem; -webkit-font-smoothing: antialiased; }
