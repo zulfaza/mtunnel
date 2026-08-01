@@ -77,11 +77,11 @@ export class MisconfiguredError extends Schema.TaggedErrorClass<MisconfiguredErr
   readonly code = "server_misconfigured";
 }
 
-const domainConflictCodes = [
+const domainConflictCodes: readonly [
   "custom_domain_limit_reached",
   "domain_or_tunnel_taken",
   "dns_verification_pending",
-] as const;
+] = ["custom_domain_limit_reached", "domain_or_tunnel_taken", "dns_verification_pending"];
 export const DomainConflictCode = Schema.Literals(domainConflictCodes);
 export type DomainConflictCode = Schema.Schema.Type<typeof DomainConflictCode>;
 
@@ -96,11 +96,11 @@ export class DomainConflictError extends Schema.TaggedErrorClass<DomainConflictE
   readonly status = 409;
 }
 
-const domainUpstreamCodes = [
+const domainUpstreamCodes: readonly [
   "custom_domain_provision_failed",
   "custom_domain_delete_failed",
   "domain_storage_failed",
-] as const;
+] = ["custom_domain_provision_failed", "custom_domain_delete_failed", "domain_storage_failed"];
 export const DomainUpstreamCode = Schema.Literals(domainUpstreamCodes);
 export type DomainUpstreamCode = Schema.Schema.Type<typeof DomainUpstreamCode>;
 

@@ -89,7 +89,7 @@ export type TunnelStatusView = Schema.Schema.Type<typeof TunnelStatusView>;
 export const OrganizationMembershipView = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
-  role: Schema.String,
+  role: Schema.optionalKey(Schema.String),
 });
 export type OrganizationMembershipView = Schema.Schema.Type<typeof OrganizationMembershipView>;
 
