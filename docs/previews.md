@@ -1,8 +1,9 @@
 # Previews (upload HTML / artifacts / video from the CLI)
 
-Plan for `mt preview <path>`: upload a file or directory from the CLI, store it
-in R2, and serve it publicly at `https://preview.makarima.xyz/<id>/`. Decisions
-already made: dedicated host, ~100 MiB per-file cap, TTL with cron cleanup.
+`mt preview <path>` uploads a file or directory from the CLI, stores it in R2,
+and serves it publicly at `https://preview.makarima.xyz/<id>/`. Dedicated host,
+~100 MiB per-file cap, TTL with cron cleanup. This document is the feature
+reference; it was written as the implementation plan and matches what shipped.
 
 Uploads are plain HTTPS to the Worker API. The tunnel WebSocket protocol is
 untouched.

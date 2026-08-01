@@ -2,11 +2,13 @@
 
 ## Repository layout
 
-- `apps/api` — Worker, Durable Object, routing, authentication, and API tests
+- `apps/api` — Worker, Durable Objects, routing, authentication, and API tests
 - `apps/cli` — Go CLI, connection manager, and local HTTP proxy
+- `apps/dashboard` — TanStack Start dashboard Worker
+- `apps/landing` — SvelteKit marketing site Worker
 - `packages/protocol` — TypeScript protocol codec and shared fixtures
 - `packages/config` — default limits
-- `packages/shared` — tunnel ID validation
+- `packages/assets` — shared brand assets
 - `scripts/e2e.mjs` — complete local lifecycle test
 
 ## Setup
