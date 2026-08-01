@@ -6,6 +6,7 @@ dist
 .dev.vars
 coverage
 apps/cli/bin
+apps/assets-generator/generated
 .env
 *.tsbuildinfo
 /.agents/

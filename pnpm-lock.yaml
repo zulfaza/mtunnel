@@ -52,6 +52,41 @@ importers:
         specifier: ^4
         version: 4.110.0(@cloudflare/workers-types@5.20260710.1)
 
+  apps/assets-generator:
+    dependencies:
+      '@tunnel/assets':
+        specifier: workspace:*
+        version: link:../../packages/assets
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.2.8(react@19.2.8)
+    devDependencies:
+      '@tunnel/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/react':
+        specifier: ^19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ^19.2.4
+        version: 19.2.4(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: ^6.0.5
+        version: 6.0.5(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0))
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+      vite:
+        specifier: ^8.2.0
+        version: 8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.10(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0))
+
+
   apps/cli: {}
 
   apps/dashboard:
