@@ -17,6 +17,20 @@ import { Organizations, organizationsLayer } from "./organizations.js";
 import { previewsLayer, Previews } from "./previews.js";
 import { Workos, workosLayer } from "./workos.js";
 
+export type CoreServices =
+  | DomainsDatabase
+  | PreviewBucket
+  | TunnelRegistry
+  | Tunnels
+  | CoreConfig
+  | AccessLimits
+  | Workos
+  | Organizations
+  | Authentication
+  | CustomDomains
+  | Previews
+  | Analytics;
+
 export const makeCoreLayer = (bindings: CoreBindings, config: CoreConfigShape) => {
   const foundation = Layer.mergeAll(makeBindingsLayer(bindings), Layer.succeed(CoreConfig, config));
   const access = accessLimitsLayer.pipe(Layer.provideMerge(foundation));
@@ -31,63 +45,15 @@ export const makeCoreLayer = (bindings: CoreBindings, config: CoreConfigShape) =
 
 export function makeCoreRuntime(bindings: CoreBindings, config: CoreConfigShape) {
   const layer = makeCoreLayer(bindings, config);
-  let runtime:
-    | ManagedRuntime.ManagedRuntime<
-        | DomainsDatabase
-        | PreviewBucket
-        | TunnelRegistry
-        | Tunnels
-        | CoreConfig
-        | AccessLimits
-        | Workos
-        | Organizations
-        | Authentication
-        | CustomDomains
-        | Previews
-        | Analytics,
-        never
-      >
-    | undefined;
+  let runtime: ManagedRuntime.ManagedRuntime<CoreServices, never> | undefined;
   const getRuntime = () => {
     if (runtime === undefined) runtime = ManagedRuntime.make(layer);
     return runtime;
   };
   return {
-    runPromise: <A, E>(
-      effect: import("effect").Effect.Effect<
-        A,
-        E,
-        | DomainsDatabase
-        | PreviewBucket
-        | TunnelRegistry
-        | Tunnels
-        | CoreConfig
-        | AccessLimits
-        | Workos
-        | Organizations
-        | Authentication
-        | CustomDomains
-        | Previews
-        | Analytics
-      >,
-    ) => getRuntime().runPromise(effect),
-    runPromiseExit: <A, E>(
-      effect: import("effect").Effect.Effect<
-        A,
-        E,
-        | DomainsDatabase
-        | PreviewBucket
-        | TunnelRegistry
-        | Tunnels
-        | CoreConfig
-        | AccessLimits
-        | Workos
-        | Organizations
-        | Authentication
-        | CustomDomains
-        | Previews
-        | Analytics
-      >,
-    ) => getRuntime().runPromiseExit(effect),
+    runPromise: <A, E>(effect: import("effect").Effect.Effect<A, E, CoreServices>) =>
+      getRuntime().runPromise(effect),
+    runPromiseExit: <A, E>(effect: import("effect").Effect.Effect<A, E, CoreServices>) =>
+      getRuntime().runPromiseExit(effect),
   };
 }

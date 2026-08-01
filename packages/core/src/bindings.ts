@@ -16,7 +16,7 @@ export interface RegistryStub {
 
 export interface TunnelStub {
   status(tunnelId: string): Promise<TunnelStatusView>;
-  corsEnabled(): boolean;
+  corsEnabled(): boolean | Promise<boolean>;
 }
 
 export class DomainsDatabase extends Context.Service<DomainsDatabase, D1Database>()(
@@ -66,7 +66,7 @@ export class Tunnels extends Context.Service<
 export interface CoreBindings {
   readonly domains: D1Database;
   readonly previews: R2Bucket;
-  readonly registry: RegistryStub;
+  readonly registry: () => RegistryStub;
   readonly tunnels: (tunnelId: string) => TunnelStub;
 }
 
@@ -78,23 +78,28 @@ export function makeBindingsLayer(
     Layer.succeed(PreviewBucket, bindings.previews),
     Layer.succeed(TunnelRegistry, {
       claimTunnel: (tunnelId, organizationId, legacyUserId) =>
-        Effect.promise(() => bindings.registry.claimTunnel(tunnelId, organizationId, legacyUserId)),
+        Effect.promise(() =>
+          bindings.registry().claimTunnel(tunnelId, organizationId, legacyUserId),
+        ),
       ownsTunnel: (tunnelId, organizationId, legacyUserId) =>
-        Effect.promise(() => bindings.registry.ownsTunnel(tunnelId, organizationId, legacyUserId)),
+        Effect.promise(() =>
+          bindings.registry().ownsTunnel(tunnelId, organizationId, legacyUserId),
+        ),
       organizationForTunnel: (tunnelId) =>
-        Effect.promise(() => bindings.registry.organizationForTunnel(tunnelId)),
+        Effect.promise(() => bindings.registry().organizationForTunnel(tunnelId)),
       acquireConnection: (tunnelId, organizationId, connectionId, maximum) =>
         Effect.promise(() =>
-          bindings.registry.acquireConnection(tunnelId, organizationId, connectionId, maximum),
+          bindings.registry().acquireConnection(tunnelId, organizationId, connectionId, maximum),
         ),
       releaseConnection: (tunnelId, organizationId, connectionId) =>
         Effect.promise(() =>
-          bindings.registry.releaseConnection(tunnelId, organizationId, connectionId),
+          bindings.registry().releaseConnection(tunnelId, organizationId, connectionId),
         ),
     }),
     Layer.succeed(Tunnels, {
       status: (tunnelId) => Effect.promise(() => bindings.tunnels(tunnelId).status(tunnelId)),
-      corsEnabled: (tunnelId) => Effect.sync(() => bindings.tunnels(tunnelId).corsEnabled()),
+      corsEnabled: (tunnelId) =>
+        Effect.promise(() => Promise.resolve(bindings.tunnels(tunnelId).corsEnabled())),
     }),
   );
 }

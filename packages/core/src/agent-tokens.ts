@@ -88,7 +88,7 @@ export async function mintSigned(rootSecret: string, claims: SignedClaims): Prom
   return `${claimsPart}.${encodeBase64Url(await signature(claimsPart, rootSecret))}`;
 }
 
-function parseClaims(value: Uint8Array): AgentClaims | null {
+function parseClaims(value: Uint8Array): SignedClaims | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(decoder.decode(value));
@@ -104,13 +104,13 @@ function parseClaims(value: Uint8Array): AgentClaims | null {
     !Number.isFinite(record.iat) ||
     typeof record.exp !== "number" ||
     !Number.isFinite(record.exp) ||
-    record.purpose !== "agent"
+    typeof record.purpose !== "string"
   )
     return null;
   return {
     sub: record.sub,
     tunnelId: record.tunnelId,
-    purpose: "agent",
+    purpose: record.purpose,
     iat: record.iat,
     exp: record.exp,
   };
@@ -148,7 +148,17 @@ export async function verify(
   if (claims === null) return { ok: false, reason: "bad_structure" };
   if (claims.exp <= nowSeconds) return { ok: false, reason: "expired" };
   if (claims.tunnelId !== expectedTunnelId) return { ok: false, reason: "tunnel_mismatch" };
-  return { ok: true, claims };
+  if (claims.purpose !== "agent") return { ok: false, reason: "bad_purpose" };
+  return {
+    ok: true,
+    claims: {
+      sub: claims.sub,
+      tunnelId: claims.tunnelId,
+      purpose: "agent",
+      iat: claims.iat,
+      exp: claims.exp,
+    },
+  };
 }
 
 export function timingSafeSecretEqual(provided: string, expected: string): boolean {

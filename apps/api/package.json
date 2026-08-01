@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@tunnel/config": "workspace:*",
+    "@tunnel/core": "workspace:*",
     "@tunnel/protocol": "workspace:*",
+    "effect": "catalog:",
     "jose": "^6.2.3"
   },
   "devDependencies": {

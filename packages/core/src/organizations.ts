@@ -89,8 +89,12 @@ function activeMemberships(input: unknown): readonly OrganizationMembershipView[
 }
 
 function firstOrganizationId(input: unknown): string | null {
-  const memberships = activeMemberships(input);
-  return memberships[0]?.id ?? null;
+  const decoded = decodeMemberships(input);
+  if (decoded._tag === "None") return null;
+  return (
+    decoded.value.data.find((item) => item.status === undefined || item.status === "active")
+      ?.organization_id ?? null
+  );
 }
 
 function pendingInvitationOrganization(input: unknown): string | null {
