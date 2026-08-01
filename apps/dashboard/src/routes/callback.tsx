@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { SectionHeading, Shell } from "../components/shell.js";
-import { cancelLogin, completeLogin } from "../lib/auth.js";
+import { completeLogin } from "../server/auth.js";
 
 export interface CallbackSearch {
   readonly code: string | undefined;
@@ -30,16 +30,14 @@ function CallbackPage(): ReactNode {
     if (exchanged.current) return;
     exchanged.current = true;
     if (search.error !== undefined) {
-      cancelLogin(search.state);
       setError(search.error_description ?? search.error);
       return;
     }
     if (search.code === undefined || search.state === undefined) {
-      cancelLogin(search.state);
       setError("Missing authorization code.");
       return;
     }
-    completeLogin(search.code, search.state)
+    completeLogin({ data: { code: search.code, state: search.state } })
       .then(() => navigate({ to: "/" }))
       .catch((cause: unknown) => {
         setError(cause instanceof Error ? cause.message : "Sign in failed.");

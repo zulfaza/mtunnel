@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
 
 export function Shell({
   children,
@@ -20,6 +21,24 @@ export function Shell({
           </span>
         </a>
         <nav className="flex flex-wrap items-center gap-4">
+          <Link
+            className="text-[13px] text-muted-foreground no-underline hover:text-foreground"
+            to="/"
+          >
+            assets
+          </Link>
+          <Link
+            className="text-[13px] text-muted-foreground no-underline hover:text-foreground"
+            to="/domains"
+          >
+            domains
+          </Link>
+          <Link
+            className="text-[13px] text-muted-foreground no-underline hover:text-foreground"
+            to="/tunnels"
+          >
+            tunnels
+          </Link>
           <a
             className="border-b border-transparent pb-0.5 text-[13px] text-muted-foreground no-underline transition-colors hover:border-foreground/40 hover:text-foreground"
             href="https://makarima.xyz/docs"

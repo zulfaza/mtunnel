@@ -1,7 +1,10 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Copy, ExternalLink, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { apiFetch, AuthError, clearAuth, storedAuth } from "../lib/auth.js";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import type { Schemas } from "@tunnel/core";
+import { signOut } from "../server/auth.js";
+import { createPreview, deletePreview, updatePreview } from "../server/previews.js";
+import { OrganizationSwitcher } from "./organization-switcher.js";
 import { SectionHeading, Shell } from "./shell.js";
 import { Badge } from "./ui/badge.js";
 import { Button } from "./ui/button.js";
@@ -18,16 +21,7 @@ import { Label } from "./ui/label.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.js";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.js";
 
-interface Preview {
-  readonly id: string;
-  readonly name: string;
-  readonly url: string;
-  readonly totalBytes: number;
-  readonly fileCount: number;
-  readonly createdAt: number;
-  readonly expiresAt: number;
-  readonly visibility: "public" | "private" | "code";
-}
+type Preview = Schemas.PreviewView;
 
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
@@ -49,24 +43,40 @@ function formatExpiry(expiresAt: number): string {
   return `in ${Math.round(hours / 24)}d`;
 }
 
+function isPreviewVisibility(value: string): value is Preview["visibility"] {
+  return value === "public" || value === "private" || value === "code";
+}
+
 const VISIBILITY_BADGE: Record<Preview["visibility"], ReactNode> = {
   public: <Badge variant="accent">public</Badge>,
   private: <Badge variant="destructive">private</Badge>,
   code: <Badge>code</Badge>,
 };
 
-export function AssetsPage(): ReactNode {
+export function AssetsPage({
+  email,
+  initialPreviews,
+}: {
+  readonly email: string;
+  readonly initialPreviews: readonly Preview[] | null;
+}): ReactNode {
   const navigate = useNavigate();
-  const [previews, setPreviews] = useState<readonly Preview[] | null>(null);
-  const [email, setEmail] = useState("");
+  const [previews, setPreviews] = useState<readonly Preview[] | null>(initialPreviews);
   const [error, setError] = useState<string | null>(null);
   const [codePrompt, setCodePrompt] = useState<Preview | null>(null);
   const [accessCode, setAccessCode] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const directoryInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    directoryInput.current?.setAttribute("webkitdirectory", "");
+  }, []);
 
   const fail = useCallback(
     (cause: unknown): void => {
-      if (cause instanceof AuthError) {
+      if (cause instanceof Error && cause.message === "signed_out") {
         void navigate({ to: "/login" });
         return;
       }
@@ -75,22 +85,6 @@ export function AssetsPage(): ReactNode {
     [navigate],
   );
 
-  useEffect(() => {
-    const auth = storedAuth();
-    if (auth === null) {
-      void navigate({ to: "/login" });
-      return;
-    }
-    setEmail(auth.email);
-    apiFetch("/api/v1/previews")
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`Could not load assets (status ${response.status}).`);
-        const body = (await response.json()) as { previews: readonly Preview[] };
-        setPreviews(body.previews);
-      })
-      .catch(fail);
-  }, [fail, navigate]);
-
   const applyVisibility = async (
     preview: Preview,
     visibility: Preview["visibility"],
@@ -98,15 +92,13 @@ export function AssetsPage(): ReactNode {
   ): Promise<void> => {
     setError(null);
     try {
-      const response = await apiFetch(`/api/v1/previews/${preview.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(
-          visibility === "code" ? { visibility, accessCode: code } : { visibility },
-        ),
+      const updated = await updatePreview({
+        data: {
+          id: preview.id,
+          visibility,
+          ...(code === undefined ? {} : { accessCode: code }),
+        },
       });
-      if (!response.ok) throw new Error(`Could not update visibility (status ${response.status}).`);
-      const updated = (await response.json()) as Preview;
       setPreviews(
         (current) => current?.map((item) => (item.id === preview.id ? updated : item)) ?? null,
       );
@@ -124,12 +116,32 @@ export function AssetsPage(): ReactNode {
     });
   };
 
-  const deletePreview = async (preview: Preview): Promise<void> => {
+  const upload = (event: FormEvent): void => {
+    event.preventDefault();
+    const selectedFiles = [
+      ...(fileInput.current?.files === null || fileInput.current?.files === undefined
+        ? []
+        : [...fileInput.current.files]),
+      ...(directoryInput.current?.files === null || directoryInput.current?.files === undefined
+        ? []
+        : [...directoryInput.current.files]),
+    ];
+    if (selectedFiles.length === 0) return;
+    setUploading(true);
+    setError(null);
+    void uploadPreviewFiles(selectedFiles)
+      .then((created) =>
+        setPreviews((current) => (current === null ? [created] : [created, ...current])),
+      )
+      .catch(fail)
+      .finally(() => setUploading(false));
+  };
+
+  const removePreview = async (preview: Preview): Promise<void> => {
     if (!window.confirm(`Delete preview "${preview.name}"? This cannot be undone.`)) return;
     setError(null);
     try {
-      const response = await apiFetch(`/api/v1/previews/${preview.id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(`Could not delete preview (status ${response.status}).`);
+      await deletePreview({ data: { id: preview.id } });
       setPreviews((current) => current?.filter((item) => item.id !== preview.id) ?? null);
     } catch (cause) {
       fail(cause);
@@ -143,17 +155,19 @@ export function AssetsPage(): ReactNode {
     });
   };
 
-  const signOut = (): void => {
-    clearAuth();
-    void navigate({ to: "/login" });
+  const logOut = (): void => {
+    void signOut()
+      .then(() => navigate({ to: "/login" }))
+      .catch(fail);
   };
 
   return (
     <Shell
       actions={
         <span className="flex items-center gap-3">
+          <OrganizationSwitcher />
           <span className="hidden text-[13px] text-muted-foreground sm:inline">{email}</span>
-          <Button onClick={signOut} variant="ghost">
+          <Button onClick={logOut} variant="ghost">
             sign out
           </Button>
         </span>
@@ -167,6 +181,34 @@ export function AssetsPage(): ReactNode {
           <code className="border border-border-soft bg-muted px-1.5 text-xs">mt preview</code>. Set
           each asset to public, private, or public with an access code.
         </p>
+        <form
+          className="mt-6 flex flex-wrap items-end gap-3 border border-border-soft bg-muted p-4"
+          onSubmit={upload}
+        >
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="asset-files">Files</Label>
+            <Input
+              id="asset-files"
+              multiple
+              onChange={() => undefined}
+              ref={fileInput}
+              type="file"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="asset-directory">Directory</Label>
+            <Input
+              id="asset-directory"
+              multiple
+              onChange={() => undefined}
+              ref={directoryInput}
+              type="file"
+            />
+          </div>
+          <Button disabled={uploading} type="submit" variant="primary">
+            {uploading ? "Uploading…" : "Upload preview"}
+          </Button>
+        </form>
         {error !== null && <p className="mt-4 text-[13px] text-destructive">{error}</p>}
         <div className="mt-6">
           {previews === null ? (
@@ -212,7 +254,8 @@ export function AssetsPage(): ReactNode {
                       <div className="flex items-center gap-2">
                         <Select
                           onValueChange={(value) => {
-                            const visibility = value as Preview["visibility"];
+                            if (!isPreviewVisibility(value)) return;
+                            const visibility = value;
                             if (visibility === "code") {
                               setCodePrompt(preview);
                               setAccessCode("");
@@ -254,7 +297,7 @@ export function AssetsPage(): ReactNode {
                         </Button>
                         <Button
                           aria-label="Delete preview"
-                          onClick={() => void deletePreview(preview)}
+                          onClick={() => void removePreview(preview)}
                           size="icon"
                           title="Delete"
                           variant="destructive"
@@ -310,4 +353,41 @@ export function AssetsPage(): ReactNode {
       </Dialog>
     </Shell>
   );
+}
+
+async function uploadPreviewFiles(files: readonly File[]): Promise<Preview> {
+  const manifest = await Promise.all(
+    files.map(async (file) => ({
+      path: file.webkitRelativePath || file.name,
+      size: file.size,
+      contentType: file.type || "application/octet-stream",
+      sha256: await fileHash(file),
+    })),
+  );
+  const name = files[0]?.webkitRelativePath.split("/")[0] || files[0]?.name || "preview";
+  const created = await createPreview({ data: { name, files: manifest } });
+  const previewId = created.id;
+  await Promise.all(
+    files.map(async (file) => {
+      const path = file.webkitRelativePath || file.name;
+      const response = await fetch(`/assets/upload/${encodePath(previewId)}/${encodePath(path)}`, {
+        method: "PUT",
+        body: file,
+      });
+      if (!response.ok) throw new Error(`Upload failed for ${path}.`);
+    }),
+  );
+  return created;
+}
+
+async function fileHash(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function encodePath(value: string): string {
+  return value
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
 }

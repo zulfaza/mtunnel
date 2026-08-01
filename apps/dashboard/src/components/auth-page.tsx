@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
-import { startLogin, storedAuth } from "../lib/auth.js";
+import { beginLogin, currentUser } from "../server/auth.js";
 import { Globe } from "./globe.js";
 import { Button } from "./ui/button.js";
 
@@ -23,13 +23,16 @@ export function AuthPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    if (storedAuth() !== null) void navigate({ to: "/" });
+    void currentUser()
+      .then(() => navigate({ to: "/" }))
+      .catch(() => undefined);
   }, [navigate]);
   const begin = async (): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
-      await startLogin(screenHint);
+      const result = await beginLogin({ data: { screenHint } });
+      window.location.assign(result.url);
     } catch (cause) {
       setBusy(false);
       setError(cause instanceof Error ? cause.message : "Could not start sign in.");
