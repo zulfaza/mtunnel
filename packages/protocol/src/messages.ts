@@ -1,21 +1,61 @@
-import {
-  CANCEL_REASONS,
-  type CancelReason,
-  ERROR_CODES,
-  type ErrorCode,
-  FrameType,
-  ZERO_REQUEST_ID,
-} from "./constants.js";
+import { Schema } from "effect";
+import { type CancelReason, type ErrorCode, FrameType, ZERO_REQUEST_ID } from "./constants.js";
 import { decodeFrame, encodeFrame } from "./frame.js";
 import { ProtocolError } from "./errors.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false });
-
 const EMPTY_PAYLOAD = new Uint8Array(0);
 
 /** Ordered [name, value] header pairs, preserving duplicates (e.g. Set-Cookie). */
 export type HeaderPairs = [string, string][];
+
+const HeaderPair = Schema.Tuple([Schema.String, Schema.String]);
+const HeaderPairsSchema = Schema.Array(HeaderPair);
+const CancelReasonSchema = Schema.Literals([
+  "timeout",
+  "client_disconnected",
+  "upstream_error",
+  "shutdown",
+]);
+const ErrorCodeSchema = Schema.Literals([
+  "invalid_frame",
+  "payload_too_large",
+  "too_many_requests",
+  "unknown_request",
+  "upstream_unreachable",
+  "internal",
+]);
+
+const HelloPayload = Schema.Struct({ tunnelId: Schema.String, agentVersion: Schema.String });
+const HelloAckPayload = Schema.Struct({
+  tunnelId: Schema.String,
+  publicUrl: Schema.String,
+  heartbeatIntervalMs: Schema.Number,
+  heartbeatTimeoutMs: Schema.Number,
+  requestTimeoutMs: Schema.Number,
+  maxPayloadBytes: Schema.Number,
+});
+const RequestStartPayload = Schema.Struct({
+  method: Schema.String,
+  path: Schema.String,
+  headers: HeaderPairsSchema,
+  hasBody: Schema.Boolean,
+});
+const ResponseStartPayload = Schema.Struct({
+  status: Schema.Number,
+  headers: HeaderPairsSchema,
+  hasBody: Schema.Boolean,
+});
+const CancelPayload = Schema.Struct({ reason: CancelReasonSchema });
+const ErrorPayload = Schema.Struct({ code: ErrorCodeSchema, message: Schema.String });
+
+const decodeHelloPayload = Schema.decodeUnknownSync(HelloPayload);
+const decodeHelloAckPayload = Schema.decodeUnknownSync(HelloAckPayload);
+const decodeRequestStartPayload = Schema.decodeUnknownSync(RequestStartPayload);
+const decodeResponseStartPayload = Schema.decodeUnknownSync(ResponseStartPayload);
+const decodeCancelPayload = Schema.decodeUnknownSync(CancelPayload);
+const decodeErrorPayload = Schema.decodeUnknownSync(ErrorPayload);
 
 export interface HelloMessage {
   readonly kind: "hello";
@@ -114,91 +154,18 @@ function encodeJson(value: unknown): Uint8Array {
   return encoder.encode(JSON.stringify(value));
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseJsonRecord(payload: Uint8Array): Record<string, unknown> {
-  let text: string;
+function decodeJsonPayload<T>(decode: (input: unknown) => T, payload: Uint8Array): T {
   try {
-    text = decoder.decode(payload);
-  } catch {
-    throw new ProtocolError("invalid_json", "Payload is not valid UTF-8");
+    return decode(JSON.parse(decoder.decode(payload)));
+  } catch (error) {
+    if (error instanceof ProtocolError) throw error;
+    const message = error instanceof Error ? error.message : "Invalid JSON payload";
+    throw new ProtocolError({ code: "invalid_json", message });
   }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new ProtocolError("invalid_json", "Payload is not valid JSON");
-  }
-
-  if (!isRecord(parsed)) {
-    throw new ProtocolError("invalid_json", "JSON payload must be an object");
-  }
-  return parsed;
 }
 
-function requireString(obj: Record<string, unknown>, field: string): string {
-  const value = obj[field];
-  if (typeof value !== "string") {
-    throw new ProtocolError("invalid_json", `Field "${field}" must be a string`);
-  }
-  return value;
-}
-
-function requireNumber(obj: Record<string, unknown>, field: string): number {
-  const value = obj[field];
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new ProtocolError("invalid_json", `Field "${field}" must be a finite number`);
-  }
-  return value;
-}
-
-function requireBoolean(obj: Record<string, unknown>, field: string): boolean {
-  const value = obj[field];
-  if (typeof value !== "boolean") {
-    throw new ProtocolError("invalid_json", `Field "${field}" must be a boolean`);
-  }
-  return value;
-}
-
-function requireHeaderPairs(obj: Record<string, unknown>, field: string): HeaderPairs {
-  const value = obj[field];
-  if (!Array.isArray(value)) {
-    throw new ProtocolError("invalid_json", `Field "${field}" must be an array`);
-  }
-  const pairs: HeaderPairs = [];
-  for (const entry of value) {
-    if (!Array.isArray(entry) || entry.length !== 2) {
-      throw new ProtocolError("invalid_json", `Field "${field}" must contain [name, value] pairs`);
-    }
-    const [name, headerValue]: unknown[] = entry;
-    if (typeof name !== "string" || typeof headerValue !== "string") {
-      throw new ProtocolError(
-        "invalid_json",
-        `Field "${field}" must contain string [name, value] pairs`,
-      );
-    }
-    pairs.push([name, headerValue]);
-  }
-  return pairs;
-}
-
-function requireCancelReason(obj: Record<string, unknown>, field: string): CancelReason {
-  const value = obj[field];
-  if (typeof value !== "string" || !(CANCEL_REASONS as readonly string[]).includes(value)) {
-    throw new ProtocolError("invalid_json", `Field "${field}" must be a valid cancel reason`);
-  }
-  return value as CancelReason;
-}
-
-function requireErrorCode(obj: Record<string, unknown>, field: string): ErrorCode {
-  const value = obj[field];
-  if (typeof value !== "string" || !(ERROR_CODES as readonly string[]).includes(value)) {
-    throw new ProtocolError("invalid_json", `Field "${field}" must be a valid error code`);
-  }
-  return value as ErrorCode;
+function mutableHeaders(headers: ReadonlyArray<readonly [string, string]>): HeaderPairs {
+  return headers.map(([name, value]): [string, string] => [name, value]);
 }
 
 /** Encode a typed {@link Message} into a wire frame. */
@@ -269,72 +236,45 @@ export function decodeMessage(data: Uint8Array): Message {
 
   switch (type) {
     case FrameType.Hello: {
-      const obj = parseJsonRecord(payload);
+      const value = decodeJsonPayload(decodeHelloPayload, payload);
       return {
         kind: "hello",
         requestId,
-        tunnelId: requireString(obj, "tunnelId"),
-        agentVersion: requireString(obj, "agentVersion"),
+        tunnelId: value.tunnelId,
+        agentVersion: value.agentVersion,
       };
     }
     case FrameType.HelloAck: {
-      const obj = parseJsonRecord(payload);
-      return {
-        kind: "helloAck",
-        requestId,
-        tunnelId: requireString(obj, "tunnelId"),
-        publicUrl: requireString(obj, "publicUrl"),
-        heartbeatIntervalMs: requireNumber(obj, "heartbeatIntervalMs"),
-        heartbeatTimeoutMs: requireNumber(obj, "heartbeatTimeoutMs"),
-        requestTimeoutMs: requireNumber(obj, "requestTimeoutMs"),
-        maxPayloadBytes: requireNumber(obj, "maxPayloadBytes"),
-      };
+      const value = decodeJsonPayload(decodeHelloAckPayload, payload);
+      return { kind: "helloAck", requestId, ...value };
     }
     case FrameType.RequestStart: {
-      const obj = parseJsonRecord(payload);
-      return {
-        kind: "requestStart",
-        requestId,
-        method: requireString(obj, "method"),
-        path: requireString(obj, "path"),
-        headers: requireHeaderPairs(obj, "headers"),
-        hasBody: requireBoolean(obj, "hasBody"),
-      };
+      const value = decodeJsonPayload(decodeRequestStartPayload, payload);
+      return { kind: "requestStart", requestId, ...value, headers: mutableHeaders(value.headers) };
     }
     case FrameType.RequestBody:
       return { kind: "requestBody", requestId, data: payload };
     case FrameType.RequestEnd:
       return { kind: "requestEnd", requestId };
     case FrameType.ResponseStart: {
-      const obj = parseJsonRecord(payload);
-      return {
-        kind: "responseStart",
-        requestId,
-        status: requireNumber(obj, "status"),
-        headers: requireHeaderPairs(obj, "headers"),
-        hasBody: requireBoolean(obj, "hasBody"),
-      };
+      const value = decodeJsonPayload(decodeResponseStartPayload, payload);
+      return { kind: "responseStart", requestId, ...value, headers: mutableHeaders(value.headers) };
     }
     case FrameType.ResponseBody:
       return { kind: "responseBody", requestId, data: payload };
     case FrameType.ResponseEnd:
       return { kind: "responseEnd", requestId };
     case FrameType.Cancel: {
-      const obj = parseJsonRecord(payload);
-      return { kind: "cancel", requestId, reason: requireCancelReason(obj, "reason") };
+      const value = decodeJsonPayload(decodeCancelPayload, payload);
+      return { kind: "cancel", requestId, reason: value.reason };
     }
     case FrameType.Ping:
       return { kind: "ping" };
     case FrameType.Pong:
       return { kind: "pong" };
     case FrameType.Error: {
-      const obj = parseJsonRecord(payload);
-      return {
-        kind: "error",
-        requestId,
-        code: requireErrorCode(obj, "code"),
-        message: requireString(obj, "message"),
-      };
+      const value = decodeJsonPayload(decodeErrorPayload, payload);
+      return { kind: "error", requestId, ...value };
     }
   }
 }
