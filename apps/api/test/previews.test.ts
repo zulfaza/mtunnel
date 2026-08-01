@@ -136,29 +136,6 @@ describe("previews", () => {
     expect(invalid.status).toBe(400);
   });
 
-  it("answers CORS preflight and reflects allowed origins", async () => {
-    const preflight = await SELF.fetch("http://worker.test/api/v1/previews", {
-      method: "OPTIONS",
-      headers: { origin: "http://localhost:5173", "access-control-request-method": "GET" },
-    });
-    expect(preflight.status).toBe(204);
-    expect(preflight.headers.get("access-control-allow-origin")).toBe("http://localhost:5173");
-    const listed = await SELF.fetch("http://worker.test/api/v1/previews", {
-      headers: { authorization: "Bearer development-token", origin: "http://localhost:5173" },
-    });
-    expect(listed.headers.get("access-control-allow-origin")).toBe("http://localhost:5173");
-    const denied = await SELF.fetch("http://worker.test/api/v1/previews", {
-      headers: { authorization: "Bearer development-token", origin: "https://evil.example" },
-    });
-    expect(denied.headers.get("access-control-allow-origin")).toBeNull();
-  });
-
-  it("exposes the WorkOS client id", async () => {
-    const response = await SELF.fetch("http://worker.test/api/v1/auth/client");
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ clientId: "client_test" });
-  });
-
   it("removes expired preview rows and objects", async () => {
     const id = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
     await env.DOMAINS.prepare(

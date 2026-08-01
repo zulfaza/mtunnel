@@ -3,7 +3,6 @@ import { jsonError } from "../../utils/json.js";
 import { isValidTunnelId } from "../../utils/tunnel-id.js";
 import type { TrackedEvent } from "../tracked-event.js";
 import { forwardConnect } from "../(tunnel)/proxy.js";
-import { jsonResponse } from "../../utils/json.js";
 import { handleToken, proxyWorkosAuth } from "./auth.js";
 import {
   domainAction,
@@ -35,14 +34,10 @@ export async function handleApi(
     return proxyWorkosAuth(request, env, "device");
   if (request.method === "POST" && url.pathname === "/api/v1/auth/device/token")
     return proxyWorkosAuth(request, env, "token");
-  if (request.method === "POST" && url.pathname === "/api/v1/auth/code")
-    return proxyWorkosAuth(request, env, "code");
   if (request.method === "POST" && url.pathname === "/api/v1/auth/refresh")
     return proxyWorkosAuth(request, env, "refresh");
   if (request.method === "POST" && url.pathname === "/api/v1/auth/token")
     return handleToken(request, env);
-  if (request.method === "GET" && url.pathname === "/api/v1/auth/client")
-    return jsonResponse({ clientId: env.WORKOS_CLIENT_ID });
   if (request.method === "POST" && url.pathname === "/api/v1/domains")
     return handleDomainAdd(request, env);
   if (request.method === "POST" && url.pathname === "/api/v1/previews")
