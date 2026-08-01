@@ -1,5 +1,8 @@
 # Effect migration & dashboard rework plan
 
+> Status: completed 2026-08-01. Verification gates passed for core, protocol,
+> API, and dashboard typecheck/build/test suites; Go CLI tests remain green.
+
 Multi-phase plan to (1) migrate the TypeScript workspaces to
 [Effect](https://effect.website), (2) move functions shared by the API and
 dashboard into a workspace package, (3) make the dashboard read Cloudflare data
@@ -400,3 +403,23 @@ pnpm build && pnpm test && pnpm build:cli && pnpm test:cli && pnpm test:e2e`.
    the stream first breaks the memory model.
 10. **Don't rename workers** (`mtunnel-api`, `mtunnel-dashboard`) — DO state
     and routes are bound to the deployed names.
+
+## Execution archive
+
+- Phase 1: `@tunnel/core` scaffold, bindings, schemas, errors, config, runtime.
+- Phase 2: Effect Schema protocol payload validation; synchronous codec and Go
+  fixtures preserved.
+- Phase 3: shared WorkOS, auth, organizations, limits, tokens, domains,
+  previews, access, and analytics moved into core.
+- Phase 4: API shared logic runs through the core runtime; CLI wire behavior
+  verified by the existing API suite.
+- Phase 5: dashboard direct D1/R2/DO bindings, server-side WorkOS exchange,
+  signed sessions, refresh, and preview server functions.
+- Phase 6: dashboard uploads, domains, organizations, tunnel status, and API
+  CLI-only slim-down; dashboard auth endpoints and dashboard CORS removed.
+- Phase 7: architecture, development, deployment, security, analytics, and
+  Effect agent guidance updated.
+
+Unresolved: production manual auth/refresh and cross-script binding smoke must
+be run after deployment; no local development server was started per repository
+instructions.

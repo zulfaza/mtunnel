@@ -26,6 +26,15 @@ exist only in the local agent process. Tunnel IDs are validated before a Durable
 Object lookup. Status requests require the root secret to prevent unauthenticated
 Durable Object enumeration or creation pressure.
 
+The dashboard has a separate server-side session model. After the WorkOS
+authorization-code exchange, it stores the access token, refresh token, email,
+and selected organization in a base64url JSON value signed with HMAC-SHA256.
+`mt_session` is HttpOnly, Secure, SameSite=Lax, Path=/, and expires after 30
+days. Server functions verify the cookie and WorkOS access token; expired access
+tokens are refreshed server-side and the cookie is re-signed. Tokens never enter
+browser storage or dashboard HTTP API calls. `SESSION_SECRET` is dashboard-only
+and must be rotated independently from `AUTH_SECRET`.
+
 ## Data handling
 
 Bodies stream through memory and are never persisted. Durable Object storage
@@ -63,3 +72,7 @@ There is no per-tunnel viewer authentication, rate-limit policy, team isolation,
 hostname reservation, or revocation list for an individual token. A root-secret
 rotation is the revocation mechanism. These are acceptable for the intended
 single-owner development use case, not a multi-tenant public service.
+
+The API is CLI-only. Dashboard browser traffic terminates at the dashboard
+Worker and uses direct bindings, so API CORS is outside the dashboard trust
+boundary.

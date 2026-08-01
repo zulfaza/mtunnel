@@ -72,6 +72,22 @@ For the dashboard application, add these redirect URIs to the same WorkOS
 application: `https://app.makarima.xyz/callback`, plus the local development
 origins `http://localhost:*/callback` and `http://127.0.0.1:*/callback`.
 
+Configure `apps/dashboard/wrangler.jsonc` with the same D1 and R2 resources and
+cross-script `TUNNELS`/`REGISTRY` bindings. Add dashboard secrets:
+
+```sh
+cd apps/dashboard
+pnpm exec wrangler secret put WORKOS_API_KEY
+pnpm exec wrangler secret put CLOUDFLARE_API_TOKEN
+pnpm exec wrangler secret put CLOUDFLARE_ZONE_ID
+pnpm exec wrangler secret put SESSION_SECRET
+```
+
+Deploy `mtunnel-api` first so the dashboard's Durable Object bindings resolve,
+then deploy `mtunnel-dashboard`. The dashboard exchanges WorkOS authorization
+codes itself and uses signed HttpOnly `mt_session` cookies; it no longer needs
+API CORS or the removed `/api/v1/auth/client` and `/api/v1/auth/code` routes.
+
 Production and staging WorkOS resources are separate; staging configuration is
 not copied when production is enabled. `AUTH_SECRET` signs only short-lived
 internal agent tokens; users never receive it.

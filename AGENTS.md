@@ -29,3 +29,10 @@ If a tradeoff is required, choose correctness and robustness over short-term con
 ## Maintainability
 
 Long term maintainability is a core priority. If you add new functionality, first check if there is shared logic that can be extracted to a separate module. Duplicate logic across multiple files is a code smell and should be avoided. Don't be afraid to change existing code. Don't take shortcuts by just adding local logic to solve a problem.
+
+## Effect
+
+- Use Effect v4 `Context.Service` layers and cached runtimes for shared Worker logic.
+- Compile Schema decoders at module scope; validate untrusted input at boundaries.
+- Use `Effect.fn` for argument-bearing effects and tagged errors at package/wire boundaries.
+- Preserve synchronous protocol codecs, tunnel hot paths, and streaming request/response bodies.
