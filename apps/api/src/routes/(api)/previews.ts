@@ -1,4 +1,6 @@
 import { limitsForOrganization } from "../../access.js";
+import { Effect } from "effect";
+import { Previews } from "@tunnel/core";
 import { authenticateUser, authErrorResponse } from "../../auth/workos.js";
 import type { Env } from "../../env.js";
 import {
@@ -8,6 +10,7 @@ import {
   type PreviewVisibility,
 } from "../../preview-access.js";
 import { jsonError, jsonResponse } from "../../utils/json.js";
+import { runCore } from "../../runtime.js";
 
 interface PreviewFile {
   readonly path: string;
@@ -319,13 +322,11 @@ export function previewIDFromPath(pathname: string): string | null {
 }
 
 export async function cleanupExpiredPreviews(env: Env): Promise<void> {
-  const expired = await env.DOMAINS.prepare(
-    "SELECT id FROM previews WHERE expires_at < ? LIMIT 100",
-  )
-    .bind(Date.now())
-    .all<{ id: string }>();
-  for (const row of expired.results) {
-    await deletePrefix(env, row.id);
-    await env.DOMAINS.prepare("DELETE FROM previews WHERE id = ?").bind(row.id).run();
-  }
+  await runCore(
+    env,
+    Effect.gen(function* () {
+      const previews = yield* Previews.Previews;
+      yield* previews.cleanupExpired();
+    }),
+  );
 }

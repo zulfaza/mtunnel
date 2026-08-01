@@ -1,0 +1,172 @@
+@import "@tunnel/assets/tokens.css";
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  min-width: 100%;
+  width: 100%;
+  min-height: 100%;
+  height: 100%;
+  margin: 0;
+}
+body {
+  background: #12110f;
+  color: #f5f5f0;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+button {
+  font: inherit;
+}
+
+.studio {
+  min-height: 100vh;
+  padding: 40px;
+}
+.studio header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  max-width: 1440px;
+  margin: 0 auto 32px;
+}
+.studio h1 {
+  margin: 8px 0 0;
+  font-size: 30px;
+  letter-spacing: -0.04em;
+}
+.product {
+  color: #8dddab;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.studio code {
+  padding: 10px 12px;
+  border: 1px solid #393734;
+  color: #aaa7a0;
+  background: #1b1a18;
+  font-size: 12px;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  max-width: 1440px;
+  margin: auto;
+  border: 1px solid #393734;
+  background: #181715;
+}
+.workspace aside {
+  padding: 20px;
+  border-right: 1px solid #393734;
+}
+.workspace h2 {
+  margin: 0 0 16px;
+  color: #77736d;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.workspace button {
+  display: grid;
+  width: 100%;
+  gap: 5px;
+  margin-bottom: 8px;
+  padding: 12px;
+  border: 1px solid transparent;
+  color: #aaa7a0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.workspace button:hover,
+.workspace button.selected {
+  border-color: #46433e;
+  color: #f5f5f0;
+  background: #24221f;
+}
+.workspace button small {
+  color: #77736d;
+  font-size: 10px;
+}
+.preview-panel {
+  display: grid;
+  min-height: 620px;
+  padding: 48px;
+  place-items: center;
+  background-image: radial-gradient(#35322e 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+.preview {
+  position: relative;
+  width: 100%;
+  max-width: 1050px;
+  overflow: hidden;
+  box-shadow: 0 30px 80px #0008;
+}
+.preview > div {
+  position: absolute;
+  inset: 0;
+  transform-origin: top left;
+}
+
+.html-template {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.announcement-image {
+  display: grid;
+  place-items: center;
+  width: 1200px;
+  height: 630px;
+  overflow: hidden;
+  color: #f5f5f0;
+  background: #181715;
+}
+.announcement-image section {
+  width: 1040px;
+}
+.announcement-image small {
+  color: #8dddab;
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.announcement-image h1 {
+  max-width: 920px;
+  margin: 30px 0;
+  font-size: 72px;
+  line-height: 1.04;
+  letter-spacing: -0.06em;
+}
+.announcement-image p {
+  margin: 0;
+  color: #aaa7a0;
+  font-size: 25px;
+}
+
+@media (max-width: 800px) {
+  .studio {
+    padding: 20px;
+  }
+  .studio header {
+    align-items: start;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+  .workspace aside {
+    border-right: 0;
+    border-bottom: 1px solid #393734;
+  }
+  .preview-panel {
+    min-height: 400px;
+    padding: 20px;
+  }
+}

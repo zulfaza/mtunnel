@@ -5,4 +5,25 @@
   "compatibility_date": "2026-07-31",
   "compatibility_flags": ["nodejs_compat"],
   "routes": [{ "pattern": "app.makarima.xyz", "custom_domain": true }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "TUNNELS", "class_name": "TunnelDO", "script_name": "mtunnel-api" },
+      { "name": "REGISTRY", "class_name": "RegistryDO", "script_name": "mtunnel-api" },
+    ],
+  },
+  "d1_databases": [
+    {
+      "binding": "DOMAINS",
+      "database_name": "mtunnel-domains",
+      "database_id": "d73b0447-a7ec-47c8-a804-30578f053b7c",
+      "remote": true,
+    },
+  ],
+  "r2_buckets": [{ "binding": "PREVIEWS", "bucket_name": "mtunnel-previews" }],
+  "vars": {
+    "TUNNEL_DOMAIN": "makarima.xyz",
+    "PREVIEW_DOMAIN": "preview.makarima.xyz",
+    "CUSTOM_DOMAIN_CNAME": "cname.makarima.xyz",
+    "WORKOS_CLIENT_ID": "client_01K65Z0KMSGX9H9XQDN5TECBYD",
+  },
 }

@@ -11,7 +11,6 @@ import { forwardProxy } from "./routes/(tunnel)/proxy.js";
 import type { TrackedEvent } from "./routes/tracked-event.js";
 import { servePreview } from "./routes/(preview)/serve.js";
 import { cleanupExpiredPreviews } from "./routes/(api)/previews.js";
-import { corsPreflight, withCors } from "./utils/cors.js";
 
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
@@ -21,8 +20,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   if (siteResponse !== null) return siteResponse;
 
   if (url.pathname.startsWith("/api/v1")) {
-    if (request.method === "OPTIONS") return corsPreflight(request, env);
-    return withCors(request, env, await handleApi(request, env, ctx, url));
+    return handleApi(request, env, ctx, url);
   }
 
   if (hostname === env.PREVIEW_DOMAIN.toLowerCase()) return servePreview(request, env, url);

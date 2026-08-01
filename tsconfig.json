@@ -7,8 +7,10 @@
   "references": [
     { "path": "packages/protocol" },
     { "path": "packages/config" },
+    { "path": "packages/core" },
     { "path": "apps/api" },
     { "path": "apps/landing" },
-    { "path": "apps/dashboard" }
+    { "path": "apps/dashboard" },
+    { "path": "apps/assets-generator" }
   ]
 }

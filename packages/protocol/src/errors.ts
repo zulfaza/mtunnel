@@ -1,3 +1,5 @@
+import { Data } from "effect";
+
 /** Error codes thrown by the low-level frame codec and typed message layer. */
 export type ProtocolErrorCode =
   | "invalid_version"
@@ -8,12 +10,7 @@ export type ProtocolErrorCode =
   | "invalid_json";
 
 /** Thrown by {@link encodeFrame}/{@link decodeFrame} and the typed message layer on any wire-format violation. */
-export class ProtocolError extends Error {
+export class ProtocolError extends Data.TaggedError("ProtocolError")<{
   readonly code: ProtocolErrorCode;
-
-  constructor(code: ProtocolErrorCode, message: string) {
-    super(message);
-    this.name = "ProtocolError";
-    this.code = code;
-  }
-}
+  readonly message: string;
+}> {}

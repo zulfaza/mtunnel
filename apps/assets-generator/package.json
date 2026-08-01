@@ -1,0 +1,28 @@
+{
+  "name": "@tunnel/assets-generator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "generate": "node scripts/generate.mjs",
+    "lint": "oxlint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@tunnel/assets": "workspace:*",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tunnel/tsconfig": "workspace:*",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "typescript": "^5",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.0"
+  }
+}

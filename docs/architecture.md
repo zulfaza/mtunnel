@@ -65,3 +65,17 @@ seconds to response start or between response chunks.
   `apps/landing/static`.
 - `app.makarima.xyz` is the TanStack Start dashboard Worker (`mtunnel-dashboard`).
 - `api.makarima.xyz` and tunnel wildcard hosts are served by `mtunnel-api`.
+
+## Shared Effect core
+
+`packages/core` (`@tunnel/core`) owns schemas, tagged wire errors, WorkOS
+authentication, organizations, access limits, custom domains, previews, and
+analytics. API and dashboard construct cached Effect runtimes from their own
+Cloudflare bindings. Protocol framing remains synchronous and the tunnel
+proxy/Durable Object hot path remains imperative.
+
+The dashboard does not call `api.makarima.xyz`. TanStack Start server functions
+read D1/R2/Durable Object bindings directly; preview uploads use a streaming
+Worker route. The API is CLI-only after dashboard deployment and retains device,
+refresh, token, domain, preview, organization, and tunnel endpoints required by
+the Go client.

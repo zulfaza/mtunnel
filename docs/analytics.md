@@ -3,6 +3,10 @@
 The edge Worker sends operational product events to PostHog. Analytics is disabled when
 `POSTHOG_API_KEY` is absent, and delivery failures never fail a tunnel request.
 
+Dashboard mutations use the same core services and currently emit no separate
+dashboard analytics events. If dashboard funnel events are added later, emit
+them from the dashboard Worker and preserve the privacy exclusions below.
+
 ## Configure PostHog
 
 Create a PostHog project, copy its project API key, and add it as a Worker secret:

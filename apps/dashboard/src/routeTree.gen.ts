@@ -11,8 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CallbackRouteImport } from './routes/callback'
+import { Route as DomainsRouteImport } from './routes/domains'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as RegisterRouteImport } from './routes/register'
+import { Route as TunnelsRouteImport } from './routes/tunnels'
+import { Route as AssetsUploadSplatRouteImport } from './routes/assets/upload/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,6 +25,11 @@ const IndexRoute = IndexRouteImport.update({
 const CallbackRoute = CallbackRouteImport.update({
   id: '/callback',
   path: '/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DomainsRoute = DomainsRouteImport.update({
+  id: '/domains',
+  path: '/domains',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -34,39 +42,83 @@ const RegisterRoute = RegisterRouteImport.update({
   path: '/register',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TunnelsRoute = TunnelsRouteImport.update({
+  id: '/tunnels',
+  path: '/tunnels',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AssetsUploadSplatRoute = AssetsUploadSplatRouteImport.update({
+  id: '/assets/upload/$',
+  path: '/assets/upload/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/callback': typeof CallbackRoute
+  '/domains': typeof DomainsRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/tunnels': typeof TunnelsRoute
+  '/assets/upload/$': typeof AssetsUploadSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/callback': typeof CallbackRoute
+  '/domains': typeof DomainsRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/tunnels': typeof TunnelsRoute
+  '/assets/upload/$': typeof AssetsUploadSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/callback': typeof CallbackRoute
+  '/domains': typeof DomainsRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/tunnels': typeof TunnelsRoute
+  '/assets/upload/$': typeof AssetsUploadSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/callback' | '/login' | '/register'
+  fullPaths:
+    | '/'
+    | '/callback'
+    | '/domains'
+    | '/login'
+    | '/register'
+    | '/tunnels'
+    | '/assets/upload/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/callback' | '/login' | '/register'
-  id: '__root__' | '/' | '/callback' | '/login' | '/register'
+  to:
+    | '/'
+    | '/callback'
+    | '/domains'
+    | '/login'
+    | '/register'
+    | '/tunnels'
+    | '/assets/upload/$'
+  id:
+    | '__root__'
+    | '/'
+    | '/callback'
+    | '/domains'
+    | '/login'
+    | '/register'
+    | '/tunnels'
+    | '/assets/upload/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CallbackRoute: typeof CallbackRoute
+  DomainsRoute: typeof DomainsRoute
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
+  TunnelsRoute: typeof TunnelsRoute
+  AssetsUploadSplatRoute: typeof AssetsUploadSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -85,6 +137,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/domains': {
+      id: '/domains'
+      path: '/domains'
+      fullPath: '/domains'
+      preLoaderRoute: typeof DomainsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -99,14 +158,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RegisterRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tunnels': {
+      id: '/tunnels'
+      path: '/tunnels'
+      fullPath: '/tunnels'
+      preLoaderRoute: typeof TunnelsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/assets/upload/$': {
+      id: '/assets/upload/$'
+      path: '/assets/upload/$'
+      fullPath: '/assets/upload/$'
+      preLoaderRoute: typeof AssetsUploadSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CallbackRoute: CallbackRoute,
+  DomainsRoute: DomainsRoute,
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
+  TunnelsRoute: TunnelsRoute,
+  AssetsUploadSplatRoute: AssetsUploadSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
