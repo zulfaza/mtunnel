@@ -1,6 +1,5 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import "@tunnel/assets/tokens.css";
 import "./styles.css";
 
 function RootDocument(): ReactNode {
@@ -9,7 +8,7 @@ function RootDocument(): ReactNode {
       <head>
         <meta charSet="utf-8" />
         <meta content="width=device-width, initial-scale=1" name="viewport" />
-        <title>mtunnel dashboard</title>
+        <title>mTunnel dashboard</title>
         <HeadContent />
       </head>
       <body>

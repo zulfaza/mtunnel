@@ -133,27 +133,12 @@ describe("edge Worker routes", () => {
     await expect(response.json()).resolves.toEqual({ status: "ok" });
   });
 
-  it("serves landing, installer, and browser error pages", async () => {
-    const landing = await SELF.fetch("http://worker.test/");
-    expect(landing.headers.get("content-type")).toContain("text/html");
-    const landingHtml = await landing.text();
-    expect(landingHtml).toContain("Your localhost");
-    expect(landingHtml).toContain('property="og:image" content="https://makarima.xyz/og.png"');
-    expect(landingHtml).toContain('rel="canonical" href="https://makarima.xyz/"');
-    expect(landingHtml).toContain('rel="icon" href="/favicon.ico"');
-    expect(landingHtml).toContain('href="https://github.com/zulfaza/mtunnel"');
-    const favicon = await SELF.fetch("http://worker.test/favicon.ico");
-    expect(favicon.status).toBe(200);
-    expect(favicon.headers.get("content-type")).toBe("image/vnd.microsoft.icon");
-    const manifest = await SELF.fetch("http://worker.test/site.webmanifest");
-    await expect(manifest.json()).resolves.toMatchObject({
-      name: "mTunnel",
-      theme_color: "#fbfaf8",
-    });
-    const installer = await SELF.fetch("http://worker.test/install.sh");
-    const installerScript = await installer.text();
-    expect(installerScript).toContain("repo=zulfaza/mtunnel");
-    expect(installerScript).toContain("github.com/$repo/releases/latest/download");
+  it("serves browser error pages", async () => {
+    const notFound = await SELF.fetch("http://worker.test/");
+    expect(notFound.status).toBe(404);
+    const notFoundHtml = await notFound.text();
+    expect(notFoundHtml).toContain("not_found");
+    expect(notFoundHtml).toContain('href="https://github.com/zulfaza/mtunnel"');
     const offline = await SELF.fetch("http://worker.test/t/no-browser-agent", {
       headers: { accept: "text/html" },
     });

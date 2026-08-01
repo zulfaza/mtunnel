@@ -1,10 +1,18 @@
+import { timingSafeSecretEqual } from "../../auth/index.js";
 import type { Env } from "../../env.js";
+import {
+  cookieValue,
+  previewAccessCookieName,
+  previewAccessCookieValue,
+  verifyAccessCode,
+} from "../../preview-access.js";
+import { errorPage, previewCodePage } from "../(web)/pages.js";
 import { siteNotFound } from "../(web)/site.js";
 
-function headers(contentType: string | undefined, etag: string): Headers {
+function headers(contentType: string | undefined, etag: string, cacheControl: string): Headers {
   const output = new Headers({
     "x-content-type-options": "nosniff",
-    "cache-control": "public, max-age=60",
+    "cache-control": cacheControl,
     etag,
   });
   if (contentType !== undefined) output.set("content-type", contentType);
@@ -40,7 +48,7 @@ function escapeHTML(value: string): string {
   );
 }
 
-async function listing(env: Env, id: string): Promise<Response> {
+async function listing(env: Env, id: string, cacheControl: string): Promise<Response> {
   const listed = await env.PREVIEWS.list({ prefix: `${id}/` });
   const entries = listed.objects.map((object) => object.key.slice(id.length + 1)).sort();
   const items = entries
@@ -52,27 +60,87 @@ async function listing(env: Env, id: string): Promise<Response> {
       headers: {
         "content-type": "text/html; charset=utf-8",
         "x-content-type-options": "nosniff",
-        "cache-control": "public, max-age=60",
+        "cache-control": cacheControl,
       },
     },
   );
 }
 
+interface PreviewAccessRow {
+  readonly expires_at: number;
+  readonly visibility: string;
+  readonly access_code_hash: string | null;
+}
+
+async function handleCodeSubmission(
+  request: Request,
+  env: Env,
+  id: string,
+  preview: PreviewAccessRow,
+  url: URL,
+): Promise<Response> {
+  if (env.AUTH_SECRET === undefined || preview.access_code_hash === null)
+    return errorPage(503, "server_misconfigured", "This preview cannot verify access codes.");
+  let submitted = "";
+  try {
+    const form = await request.formData();
+    const field = form.get("code");
+    if (typeof field === "string") submitted = field;
+  } catch {
+    return previewCodePage(true);
+  }
+  if (submitted === "" || !(await verifyAccessCode(submitted, preview.access_code_hash)))
+    return previewCodePage(true);
+  const cookie = await previewAccessCookieValue(env.AUTH_SECRET, id, preview.access_code_hash);
+  const maxAge = Math.max(1, Math.floor((preview.expires_at - Date.now()) / 1000));
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: url.pathname,
+      "set-cookie": `${previewAccessCookieName(id)}=${cookie}; Path=/${id}; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`,
+    },
+  });
+}
+
+async function hasCodeAccess(
+  request: Request,
+  env: Env,
+  id: string,
+  preview: PreviewAccessRow,
+): Promise<boolean> {
+  if (env.AUTH_SECRET === undefined || preview.access_code_hash === null) return false;
+  const provided = cookieValue(request.headers.get("cookie"), previewAccessCookieName(id));
+  if (provided === null) return false;
+  const expected = await previewAccessCookieValue(env.AUTH_SECRET, id, preview.access_code_hash);
+  return timingSafeSecretEqual(provided, expected);
+}
+
 export async function servePreview(request: Request, env: Env, url: URL): Promise<Response> {
-  if (request.method !== "GET" && request.method !== "HEAD") return siteNotFound();
+  if (request.method !== "GET" && request.method !== "HEAD" && request.method !== "POST")
+    return siteNotFound();
   const match = /^\/([a-z2-7]{26})(?:\/(.*))?$/u.exec(url.pathname);
   if (match?.[1] === undefined) return siteNotFound();
   const id = match[1];
-  const preview = await env.DOMAINS.prepare("SELECT expires_at FROM previews WHERE id = ?")
+  const preview = await env.DOMAINS.prepare(
+    "SELECT expires_at, visibility, access_code_hash FROM previews WHERE id = ?",
+  )
     .bind(id)
-    .first<{ expires_at: number }>();
+    .first<PreviewAccessRow>();
   if (preview === null || preview.expires_at <= Date.now()) return siteNotFound();
+  let cacheControl = "public, max-age=60";
+  if (preview.visibility === "private")
+    return errorPage(403, "preview_private", "This preview is private.");
+  if (preview.visibility === "code") {
+    cacheControl = "private, no-store";
+    if (request.method === "POST") return handleCodeSubmission(request, env, id, preview, url);
+    if (!(await hasCodeAccess(request, env, id, preview))) return previewCodePage(false);
+  } else if (request.method === "POST") return siteNotFound();
   const path = match[2] ?? "";
   if (path === "") {
     const index = await env.PREVIEWS.get(`${id}/index.html`);
-    if (index === null) return listing(env, id);
+    if (index === null) return listing(env, id, cacheControl);
     return new Response(request.method === "HEAD" ? null : index.body, {
-      headers: headers(index.httpMetadata?.contentType, index.httpEtag),
+      headers: headers(index.httpMetadata?.contentType, index.httpEtag, cacheControl),
     });
   }
   let decoded: string;
@@ -94,8 +162,13 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
     range === undefined ? undefined : { range },
   );
   if (object === null) return siteNotFound();
-  const responseHeaders = headers(object.httpMetadata?.contentType, object.httpEtag);
-  if (object.range !== undefined && "offset" in object.range && object.range.length !== undefined) {
+  const responseHeaders = headers(object.httpMetadata?.contentType, object.httpEtag, cacheControl);
+  if (
+    range !== undefined &&
+    object.range !== undefined &&
+    "offset" in object.range &&
+    object.range.length !== undefined
+  ) {
     responseHeaders.set(
       "content-range",
       `bytes ${object.range.offset}-${object.range.offset + object.range.length - 1}/${object.size}`,
@@ -103,7 +176,7 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
     responseHeaders.set("content-length", String(object.range.length));
   } else responseHeaders.set("content-length", String(object.size));
   return new Response(request.method === "HEAD" ? null : object.body, {
-    status: object.range === undefined ? 200 : 206,
+    status: range === undefined ? 200 : 206,
     headers: responseHeaders,
   });
 }

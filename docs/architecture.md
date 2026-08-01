@@ -60,6 +60,8 @@ seconds to response start or between response chunks.
 
 ## Public applications
 
-- `makarima.xyz` is the SvelteKit landing Worker (`mtunnel-landing`).
+- `makarima.xyz` is the SvelteKit landing Worker (`mtunnel-landing`). It serves
+  `/`, `/docs`, `/terms`, `/install.sh`, and the site icons and manifest from
+  `apps/landing/static`.
 - `app.makarima.xyz` is the TanStack Start dashboard Worker (`mtunnel-dashboard`).
 - `api.makarima.xyz` and tunnel wildcard hosts are served by `mtunnel-api`.

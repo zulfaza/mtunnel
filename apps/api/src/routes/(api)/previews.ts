@@ -1,6 +1,12 @@
 import { limitsForOrganization } from "../../access.js";
 import { authenticateUser, authErrorResponse } from "../../auth/workos.js";
 import type { Env } from "../../env.js";
+import {
+  hashAccessCode,
+  isAccessCode,
+  isPreviewVisibility,
+  type PreviewVisibility,
+} from "../../preview-access.js";
 import { jsonError, jsonResponse } from "../../utils/json.js";
 
 interface PreviewFile {
@@ -18,6 +24,24 @@ interface PreviewRow {
   readonly created_at: number;
   readonly expires_at: number;
   readonly manifest: string;
+  readonly visibility: string;
+}
+
+interface VisibilityInput {
+  readonly visibility: PreviewVisibility;
+  readonly accessCodeHash: string | null;
+}
+
+async function visibilityFromBody(body: Record<string, unknown>): Promise<VisibilityInput | null> {
+  const visibility = "visibility" in body ? body.visibility : "public";
+  if (!isPreviewVisibility(visibility)) return null;
+  const accessCode = "accessCode" in body ? body.accessCode : undefined;
+  if (visibility === "code") {
+    if (!isAccessCode(accessCode)) return null;
+    return { visibility, accessCodeHash: await hashAccessCode(accessCode) };
+  }
+  if (accessCode !== undefined) return null;
+  return { visibility, accessCodeHash: null };
 }
 
 function isPreviewPath(value: string): boolean {
@@ -77,6 +101,7 @@ function previewResponse(row: PreviewRow, domain: string): Record<string, string
     fileCount: row.file_count,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
+    visibility: row.visibility,
   };
 }
 
@@ -114,6 +139,8 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     !body.files.every(validFile)
   )
     return jsonError(400, "bad_request");
+  const visibilityInput = await visibilityFromBody(body as Record<string, unknown>);
+  if (visibilityInput === null) return jsonError(400, "bad_request");
   const files = body.files;
   const paths = new Set(files.map((file) => file.path));
   const totalBytes = files.reduce((total, file) => total + file.size, 0);
@@ -151,9 +178,10 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     file_count: files.length,
     created_at: now,
     expires_at: expiresAt,
+    visibility: visibilityInput.visibility,
   };
   await env.DOMAINS.prepare(
-    "INSERT INTO previews (id, organization_id, user_id, name, manifest, total_bytes, file_count, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO previews (id, organization_id, user_id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   )
     .bind(
       row.id,
@@ -165,9 +193,43 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
       row.file_count,
       row.created_at,
       row.expires_at,
+      row.visibility,
+      visibilityInput.accessCodeHash,
     )
     .run();
   return jsonResponse(previewResponse(row, env.PREVIEW_DOMAIN), 201);
+}
+
+export async function handlePreviewUpdate(
+  request: Request,
+  env: Env,
+  id: string,
+): Promise<Response> {
+  const auth = await authenticateUser(request, env);
+  if (!auth.ok) return authErrorResponse(auth);
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonError(400, "bad_request");
+  }
+  if (typeof body !== "object" || body === null || Array.isArray(body) || !("visibility" in body))
+    return jsonError(400, "bad_request");
+  const visibilityInput = await visibilityFromBody(body as Record<string, unknown>);
+  if (visibilityInput === null) return jsonError(400, "bad_request");
+  const updated = await env.DOMAINS.prepare(
+    "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ? RETURNING id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility",
+  )
+    .bind(
+      visibilityInput.visibility,
+      visibilityInput.accessCodeHash,
+      id,
+      auth.organizationId,
+      Date.now(),
+    )
+    .first<PreviewRow>();
+  if (updated === null) return jsonError(404, "not_found");
+  return jsonResponse(previewResponse(updated, env.PREVIEW_DOMAIN));
 }
 
 export async function handlePreviewUpload(
@@ -211,7 +273,7 @@ export async function handlePreviewList(request: Request, env: Env): Promise<Res
   const auth = await authenticateUser(request, env);
   if (!auth.ok) return authErrorResponse(auth);
   const result = await env.DOMAINS.prepare(
-    "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
+    "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
   )
     .bind(auth.organizationId, Date.now())
     .all<PreviewRow>();
@@ -228,7 +290,7 @@ export async function handlePreviewDelete(
   const auth = await authenticateUser(request, env);
   if (!auth.ok) return authErrorResponse(auth);
   const row = await env.DOMAINS.prepare(
-    "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
+    "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
   )
     .bind(id, auth.organizationId, auth.userId)
     .first<PreviewRow>();

@@ -6,21 +6,24 @@ import { capture } from "./analytics.js";
 import { tunnelIdFromDevPath, tunnelIdFromHost } from "./routing/index.js";
 import { handleApi, trackedApiEvent } from "./routes/(api)/index.js";
 import { markDomainUsed } from "./routes/(api)/domains.js";
-import { handleSiteRequest, siteNotFound, trackedSiteEvent } from "./routes/(web)/site.js";
+import { handleSiteRequest, siteNotFound } from "./routes/(web)/site.js";
 import { forwardProxy } from "./routes/(tunnel)/proxy.js";
 import type { TrackedEvent } from "./routes/tracked-event.js";
 import { servePreview } from "./routes/(preview)/serve.js";
 import { cleanupExpiredPreviews } from "./routes/(api)/previews.js";
+import { corsPreflight, withCors } from "./utils/cors.js";
 
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const hostname = url.hostname.toLowerCase();
-  const isPrimaryHost = hostname === env.TUNNEL_DOMAIN.toLowerCase();
 
-  const siteResponse = handleSiteRequest(request, env, url, isPrimaryHost);
+  const siteResponse = handleSiteRequest(request, url);
   if (siteResponse !== null) return siteResponse;
 
-  if (url.pathname.startsWith("/api/v1")) return handleApi(request, env, ctx, url);
+  if (url.pathname.startsWith("/api/v1")) {
+    if (request.method === "OPTIONS") return corsPreflight(request, env);
+    return withCors(request, env, await handleApi(request, env, ctx, url));
+  }
 
   if (hostname === env.PREVIEW_DOMAIN.toLowerCase()) return servePreview(request, env, url);
 
@@ -42,14 +45,12 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   return siteNotFound();
 }
 
-function trackedEvent(request: Request, env: Env): TrackedEvent | null {
-  const url = new URL(request.url);
-  const isPrimaryHost = url.hostname.toLowerCase() === env.TUNNEL_DOMAIN.toLowerCase();
-  return trackedSiteEvent(request, url, isPrimaryHost) ?? trackedApiEvent(request, url);
+function trackedEvent(request: Request): TrackedEvent | null {
+  return trackedApiEvent(request, new URL(request.url));
 }
 
 async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const analyticsEvent = trackedEvent(request, env);
+  const analyticsEvent = trackedEvent(request);
   const response = await handleRequest(request, env, ctx);
   if (analyticsEvent !== null) {
     ctx.waitUntil(

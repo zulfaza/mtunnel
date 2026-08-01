@@ -2,7 +2,6 @@ import type { TunnelDO } from "./durable-objects/tunnel-do.js";
 import type { RegistryDO } from "./durable-objects/registry-do.js";
 
 export interface Env {
-  readonly ASSETS: Fetcher;
   readonly TUNNELS: DurableObjectNamespace<TunnelDO>;
   readonly REGISTRY: DurableObjectNamespace<RegistryDO>;
   readonly DOMAINS: D1Database;

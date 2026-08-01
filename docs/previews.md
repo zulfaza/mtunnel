@@ -18,6 +18,9 @@ https://preview.makarima.xyz/p7w3k9.../demo.mp4
 
 $ mt preview list                         # aliases: ls
 $ mt preview delete <id>                  # aliases: rm
+
+$ mt preview ./dist --visibility code --code letmein   # gate behind an access code
+$ mt preview visibility <id> private                   # change later
 ```
 
 ## Storage and metadata
@@ -42,8 +45,11 @@ CREATE INDEX previews_organization_id ON previews(organization_id);
 CREATE INDEX previews_expires_at ON previews(expires_at);
 ```
 
-- Preview ID: 128-bit random, base32-lowercase (unguessable; previews are
-  public-by-URL, no per-request auth on the serving side).
+- Preview ID: 128-bit random, base32-lowercase (unguessable; public previews
+  are public-by-URL, no per-request auth on the serving side).
+- Migration `0006_preview_visibility.sql` adds `visibility TEXT NOT NULL
+DEFAULT 'public'` (`public` | `private` | `code`) and `access_code_hash TEXT`
+  (`<salt-hex>:<sha256-hex>`, set only for `code`).
 
 ## API (new `apps/api/src/routes/(api)/previews.ts`, follows domains.ts)
 
@@ -51,9 +57,14 @@ All authenticated with `authenticateUser` + `X-Organization-Id`, quota-checked
 via `limitsForOrganization` (extended, see Limits).
 
 - `POST /api/v1/previews` — body `{name, files: [{path, size, contentType,
-sha256}]}`. Validates paths (reject absolute, `..`, backslashes, empty),
+sha256}]}` plus optional `visibility` (`public` default | `private` | `code`)
+  and `accessCode` (required iff `visibility` is `code`, 4–128 chars).
+  Validates paths (reject absolute, `..`, backslashes, empty),
   per-file/per-preview/org-quota limits. Inserts the D1 row, returns
-  `201 {id, url, expiresAt}`.
+  `201 {id, url, expiresAt, visibility, ...}`.
+- `PATCH /api/v1/previews/:id` — body `{visibility, accessCode?}` (same rules)
+  updates visibility; changing the code invalidates previously issued access
+  cookies.
 - `PUT /api/v1/previews/:id/files/<url-encoded-path>` — ownership check, path
   must exist in the manifest, `Content-Length` must match. Streams
   `request.body` straight into `env.PREVIEWS.put(key, body, {httpMetadata:
@@ -89,6 +100,13 @@ New `routes/(preview)/serve.ts`:
 public, max-age=60` with ETag revalidation. Do not use the Cache API.
 - Expired previews: object may already be gone (cron), but also check
   `expires_at` in D1 and return 404/410 past expiry.
+- Visibility gate (before any R2 read): `private` → styled 403 page. `code` →
+  requires the `preview_access_<id>` cookie, an HMAC-SHA256 of
+  `preview-access:<id>:<access_code_hash>` keyed with `AUTH_SECRET`; without it
+  the Worker renders a code form (401) that POSTs to the same URL, verifies the
+  code against the salted hash, sets the cookie (`Path=/<id>`, `HttpOnly`,
+  `Secure`, `SameSite=Lax`, expiring with the preview) and 303-redirects back.
+  Gated responses use `cache-control: private, no-store`.
 
 ## TTL cleanup (cron)
 
@@ -153,8 +171,20 @@ Vars: `PREVIEW_DOMAIN`, `MAX_PREVIEW_FILE_BYTES`, `MAX_PREVIEW_FILES`,
 3. CLI command with tests.
 4. Docs.
 
+## Visibility (v2)
+
+Every preview has a visibility, manageable from the CLI (`--visibility`/
+`--code` on create, `mt preview visibility <id> <value>` to change) and from
+the dashboard assets page:
+
+- `public` — anyone with the URL (v1 behavior, default).
+- `private` — serving host returns 403; manage/delete still works via the
+  authenticated API.
+- `code` — public URL, but visitors must enter an access code once per
+  browser; access is remembered with a signed cookie until the preview
+  expires or the code changes.
+
 ## Explicitly out of scope (v1)
 
 - Resumable/chunked uploads over 100 MiB (R2 multipart).
-- Authenticated/private previews.
 - Custom names or custom domains for previews.

@@ -3,6 +3,7 @@ import { jsonError } from "../../utils/json.js";
 import { isValidTunnelId } from "../../utils/tunnel-id.js";
 import type { TrackedEvent } from "../tracked-event.js";
 import { forwardConnect } from "../(tunnel)/proxy.js";
+import { jsonResponse } from "../../utils/json.js";
 import { handleToken, proxyWorkosAuth } from "./auth.js";
 import {
   domainAction,
@@ -18,6 +19,7 @@ import {
   handlePreviewCreate,
   handlePreviewDelete,
   handlePreviewList,
+  handlePreviewUpdate,
   handlePreviewUpload,
   previewIDFromPath,
   previewUploadPath,
@@ -33,10 +35,14 @@ export async function handleApi(
     return proxyWorkosAuth(request, env, "device");
   if (request.method === "POST" && url.pathname === "/api/v1/auth/device/token")
     return proxyWorkosAuth(request, env, "token");
+  if (request.method === "POST" && url.pathname === "/api/v1/auth/code")
+    return proxyWorkosAuth(request, env, "code");
   if (request.method === "POST" && url.pathname === "/api/v1/auth/refresh")
     return proxyWorkosAuth(request, env, "refresh");
   if (request.method === "POST" && url.pathname === "/api/v1/auth/token")
     return handleToken(request, env);
+  if (request.method === "GET" && url.pathname === "/api/v1/auth/client")
+    return jsonResponse({ clientId: env.WORKOS_CLIENT_ID });
   if (request.method === "POST" && url.pathname === "/api/v1/domains")
     return handleDomainAdd(request, env);
   if (request.method === "POST" && url.pathname === "/api/v1/previews")
@@ -58,6 +64,8 @@ export async function handleApi(
   const previewID = previewIDFromPath(url.pathname);
   if (request.method === "DELETE" && previewID !== null)
     return handlePreviewDelete(request, env, previewID);
+  if (request.method === "PATCH" && previewID !== null)
+    return handlePreviewUpdate(request, env, previewID);
   const requestedDomainAction = domainAction(url.pathname);
   if (
     requestedDomainAction !== null &&
@@ -96,6 +104,8 @@ export function trackedApiEvent(request: Request, url: URL): TrackedEvent | null
     return { event: "preview_created" };
   if (request.method === "DELETE" && previewIDFromPath(url.pathname) !== null)
     return { event: "preview_deleted" };
+  if (request.method === "PATCH" && previewIDFromPath(url.pathname) !== null)
+    return { event: "preview_visibility_updated" };
   if (request.method === "POST" && url.pathname === "/api/v1/organizations")
     return { event: "organization_create_requested" };
   if (request.method === "DELETE" && domainHostname(url.pathname) !== null)

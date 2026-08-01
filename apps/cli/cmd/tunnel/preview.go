@@ -39,6 +39,23 @@ type previewResult struct {
 	FileCount  int    `json:"fileCount"`
 	CreatedAt  int64  `json:"createdAt"`
 	ExpiresAt  int64  `json:"expiresAt"`
+	Visibility string `json:"visibility"`
+}
+
+func validatePreviewVisibility(visibility, accessCode string) error {
+	switch visibility {
+	case "public", "private":
+		if accessCode != "" {
+			return fmt.Errorf("--code is only allowed when visibility is code")
+		}
+	case "code":
+		if accessCode == "" {
+			return fmt.Errorf("--code is required when visibility is code")
+		}
+	default:
+		return fmt.Errorf("invalid visibility %q (want public, private, or code)", visibility)
+	}
+	return nil
 }
 
 func previewOutputURL(base string, files []previewFile) (string, error) {
@@ -182,11 +199,16 @@ func previewRequest(o *rootOptions, method, path string, body func() (io.ReadClo
 	})
 }
 
-func createPreview(o *rootOptions, name string, files []previewFile) (previewResult, error) {
+func createPreview(o *rootOptions, name string, files []previewFile, visibility, accessCode string) (previewResult, error) {
+	if visibility == "public" {
+		visibility, accessCode = "", ""
+	}
 	body, err := json.Marshal(struct {
-		Name  string        `json:"name"`
-		Files []previewFile `json:"files"`
-	}{name, files})
+		Name       string        `json:"name"`
+		Files      []previewFile `json:"files"`
+		Visibility string        `json:"visibility,omitempty"`
+		AccessCode string        `json:"accessCode,omitempty"`
+	}{name, files, visibility, accessCode})
 	if err != nil {
 		return previewResult{}, err
 	}
@@ -291,16 +313,20 @@ func listPreviews(o *rootOptions) ([]previewResult, error) {
 }
 
 func newPreviewCmd(o *rootOptions) *cobra.Command {
+	var visibility, accessCode string
 	preview := &cobra.Command{
 		Use:   "preview <path>",
 		Short: "Upload and manage public previews",
 		Args:  exactArgsWithHelp(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePreviewVisibility(visibility, accessCode); err != nil {
+				return err
+			}
 			name, files, err := buildPreviewManifest(args[0])
 			if err != nil {
 				return fmt.Errorf("build preview: %w", err)
 			}
-			result, err := createPreview(o, name, files)
+			result, err := createPreview(o, name, files, visibility, accessCode)
 			if err != nil {
 				return fmt.Errorf("create preview: %w", err)
 			}
@@ -315,22 +341,52 @@ func newPreviewCmd(o *rootOptions) *cobra.Command {
 			return err
 		},
 	}
+	preview.Flags().StringVar(&visibility, "visibility", "public", "preview visibility: public, private, or code")
+	preview.Flags().StringVar(&accessCode, "code", "", "access code for code visibility")
+	var updateAccessCode string
+	updateVisibility := &cobra.Command{Use: "visibility <id> <public|private|code>", Args: exactArgsWithHelp(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validatePreviewVisibility(args[1], updateAccessCode); err != nil {
+			return err
+		}
+		body, err := json.Marshal(struct {
+			Visibility string `json:"visibility"`
+			AccessCode string `json:"accessCode,omitempty"`
+		}{args[1], updateAccessCode})
+		if err != nil {
+			return err
+		}
+		response, err := previewRequest(o, http.MethodPatch, "/api/v1/previews/"+url.PathEscape(args[0]), func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }, int64(len(body)))
+		if err != nil {
+			return fmt.Errorf("update preview visibility: %w", err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			data, readErr := io.ReadAll(io.LimitReader(response.Body, 4096))
+			if readErr != nil {
+				return readErr
+			}
+			return fmt.Errorf("update preview visibility: server returned status %d: %s", response.StatusCode, strings.TrimSpace(string(data)))
+		}
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Preview %s visibility set to %s.\n", args[0], args[1])
+		return err
+	}}
+	updateVisibility.Flags().StringVar(&updateAccessCode, "code", "", "access code for code visibility")
 	preview.AddCommand(&cobra.Command{Use: "list", Aliases: []string{"ls"}, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		previews, err := listPreviews(o)
 		if err != nil {
 			return fmt.Errorf("list previews: %w", err)
 		}
 		writer := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-		if _, err = fmt.Fprintln(writer, "ID\tNAME\tFILES\tEXPIRES"); err != nil {
+		if _, err = fmt.Fprintln(writer, "ID\tNAME\tVISIBILITY\tFILES\tEXPIRES"); err != nil {
 			return err
 		}
 		for _, item := range previews {
-			if _, err = fmt.Fprintf(writer, "%s\t%s\t%d\t%s\n", item.ID, item.Name, item.FileCount, time.UnixMilli(item.ExpiresAt).Local().Format("2006-01-02 15:04:05 MST")); err != nil {
+			if _, err = fmt.Fprintf(writer, "%s\t%s\t%s\t%d\t%s\n", item.ID, item.Name, item.Visibility, item.FileCount, time.UnixMilli(item.ExpiresAt).Local().Format("2006-01-02 15:04:05 MST")); err != nil {
 				return err
 			}
 		}
 		return writer.Flush()
-	}}, &cobra.Command{Use: "delete <id>", Aliases: []string{"rm"}, Args: exactArgsWithHelp(1), RunE: func(cmd *cobra.Command, args []string) error {
+	}}, updateVisibility, &cobra.Command{Use: "delete <id>", Aliases: []string{"rm"}, Args: exactArgsWithHelp(1), RunE: func(cmd *cobra.Command, args []string) error {
 		response, err := previewRequest(o, http.MethodDelete, "/api/v1/previews/"+url.PathEscape(args[0]), nil, -1)
 		if err != nil {
 			return fmt.Errorf("delete preview: %w", err)

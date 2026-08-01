@@ -65,6 +65,100 @@ describe("previews", () => {
     );
   });
 
+  it("gates code-protected previews behind an access code", async () => {
+    const created = await SELF.fetch("http://worker.test/api/v1/previews", {
+      method: "POST",
+      headers: { authorization: "Bearer development-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "gated",
+        visibility: "code",
+        accessCode: "open-sesame",
+        files: [
+          {
+            path: "index.html",
+            size: 5,
+            contentType: "text/html",
+            sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+          },
+        ],
+      }),
+    });
+    expect(created.status).toBe(201);
+    const preview = (await created.json()) as { id: string; visibility: string };
+    expect(preview.visibility).toBe("code");
+    await SELF.fetch(`http://worker.test/api/v1/previews/${preview.id}/files/index.html`, {
+      method: "PUT",
+      headers: { authorization: "Bearer development-token", "content-length": "5" },
+      body: "hello",
+    });
+    const gated = await SELF.fetch(`http://preview.worker.test/${preview.id}/`);
+    expect(gated.status).toBe(401);
+    expect(await gated.text()).toContain("Access code required");
+    const rejected = await SELF.fetch(`http://preview.worker.test/${preview.id}/`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "code=wrong-code",
+    });
+    expect(rejected.status).toBe(401);
+    const unlocked = await SELF.fetch(`http://preview.worker.test/${preview.id}/`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "code=open-sesame",
+      redirect: "manual",
+    });
+    expect(unlocked.status).toBe(303);
+    const cookie = unlocked.headers.get("set-cookie");
+    expect(cookie).not.toBeNull();
+    const served = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`, {
+      headers: { cookie: cookie?.split(";")[0] ?? "" },
+    });
+    expect(served.status).toBe(200);
+    expect(await served.text()).toBe("hello");
+    expect(served.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("updates preview visibility", async () => {
+    const preview = await createPreview();
+    const updated = await SELF.fetch(`http://worker.test/api/v1/previews/${preview.id}`, {
+      method: "PATCH",
+      headers: { authorization: "Bearer development-token", "content-type": "application/json" },
+      body: JSON.stringify({ visibility: "private" }),
+    });
+    expect(updated.status).toBe(200);
+    expect(((await updated.json()) as { visibility: string }).visibility).toBe("private");
+    const blocked = await SELF.fetch(`http://preview.worker.test/${preview.id}/`);
+    expect(blocked.status).toBe(403);
+    const invalid = await SELF.fetch(`http://worker.test/api/v1/previews/${preview.id}`, {
+      method: "PATCH",
+      headers: { authorization: "Bearer development-token", "content-type": "application/json" },
+      body: JSON.stringify({ visibility: "code" }),
+    });
+    expect(invalid.status).toBe(400);
+  });
+
+  it("answers CORS preflight and reflects allowed origins", async () => {
+    const preflight = await SELF.fetch("http://worker.test/api/v1/previews", {
+      method: "OPTIONS",
+      headers: { origin: "http://localhost:5173", "access-control-request-method": "GET" },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("http://localhost:5173");
+    const listed = await SELF.fetch("http://worker.test/api/v1/previews", {
+      headers: { authorization: "Bearer development-token", origin: "http://localhost:5173" },
+    });
+    expect(listed.headers.get("access-control-allow-origin")).toBe("http://localhost:5173");
+    const denied = await SELF.fetch("http://worker.test/api/v1/previews", {
+      headers: { authorization: "Bearer development-token", origin: "https://evil.example" },
+    });
+    expect(denied.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("exposes the WorkOS client id", async () => {
+    const response = await SELF.fetch("http://worker.test/api/v1/auth/client");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ clientId: "client_test" });
+  });
+
   it("removes expired preview rows and objects", async () => {
     const id = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
     await env.DOMAINS.prepare(

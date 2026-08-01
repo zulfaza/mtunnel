@@ -40,7 +40,7 @@ export async function handleToken(request: Request, env: Env): Promise<Response>
 export async function proxyWorkosAuth(
   request: Request,
   env: Env,
-  kind: "device" | "token" | "refresh",
+  kind: "device" | "token" | "refresh" | "code",
 ): Promise<Response> {
   const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
   const { success } = await env.AUTH_RATE_LIMITER.limit({ key: `${kind}:${clientIp}` });
@@ -55,6 +55,29 @@ export async function proxyWorkosAuth(
     return jsonError(400, "bad_request");
   const body = new URLSearchParams({ client_id: env.WORKOS_CLIENT_ID });
   if (kind === "device") return workosForm("authorize/device", body);
+  if (kind === "code") {
+    if (
+      !("code" in input) ||
+      typeof input.code !== "string" ||
+      !("codeVerifier" in input) ||
+      typeof input.codeVerifier !== "string"
+    )
+      return jsonError(400, "bad_request");
+    if (env.WORKOS_API_KEY === undefined) return jsonError(503, "server_misconfigured");
+    return globalThis.fetch("https://api.workos.com/user_management/authenticate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        client_id: env.WORKOS_CLIENT_ID,
+        client_secret: env.WORKOS_API_KEY,
+        grant_type: "authorization_code",
+        code: input.code,
+        code_verifier: input.codeVerifier,
+        ip_address: clientIp,
+        user_agent: request.headers.get("user-agent") ?? undefined,
+      }),
+    });
+  }
   if (kind === "token" && "deviceCode" in input && typeof input.deviceCode === "string") {
     body.set("device_code", input.deviceCode);
     body.set("grant_type", "urn:ietf:params:oauth:grant-type:device_code");

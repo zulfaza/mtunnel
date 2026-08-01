@@ -68,6 +68,10 @@ In the WorkOS production environment:
 5. Configure production branding. CLI Auth uses WorkOS's device confirmation
    page and does not require a Worker redirect URI.
 
+For the dashboard application, add these redirect URIs to the same WorkOS
+application: `https://app.makarima.xyz/callback`, plus the local development
+origins `http://localhost:*/callback` and `http://127.0.0.1:*/callback`.
+
 Production and staging WorkOS resources are separate; staging configuration is
 not copied when production is enabled. `AUTH_SECRET` signs only short-lived
 internal agent tokens; users never receive it.
