@@ -1,9 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-import type { ReactNode } from "react";
-import { AuthPage, loginContent } from "../components/auth-page.js";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { beginLogin } from "../server/auth.js";
 
-export const Route = createFileRoute("/login")({ component: LoginPage });
-
-function LoginPage(): ReactNode {
-  return <AuthPage content={loginContent()} screenHint="sign-in" />;
-}
+export const Route = createFileRoute("/login")({
+  loader: async () => {
+    const login = await beginLogin({ data: { screenHint: "sign-in" } });
+    throw redirect({ href: login.url });
+  },
+});

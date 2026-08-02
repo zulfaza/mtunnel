@@ -40,6 +40,7 @@ export const beginLogin = createServerFn({ method: "GET" })
     target.searchParams.set("response_type", "code");
     target.searchParams.set("provider", "authkit");
     target.searchParams.set("screen_hint", data.screenHint);
+    target.searchParams.set("state", state);
     return { url: target.toString() };
   });
 
