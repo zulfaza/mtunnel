@@ -2,7 +2,6 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import type { Schemas } from "@tunnel/core";
 import { tunnelStatus } from "../server/tunnels.js";
 import { SectionHeading, Shell } from "./shell.js";
-import { OrganizationSwitcher } from "./organization-switcher.js";
 import { Button } from "./ui/button.js";
 import { Input } from "./ui/input.js";
 import { Label } from "./ui/label.js";
@@ -24,7 +23,7 @@ export function TunnelsPage(): ReactNode {
   };
 
   return (
-    <Shell actions={<OrganizationSwitcher />}>
+    <Shell>
       <section className="flex-1 px-5 py-8 sm:px-8">
         <SectionHeading>Tunnels</SectionHeading>
         <h1 className="mt-4 text-2xl font-medium tracking-tight">Tunnel status</h1>

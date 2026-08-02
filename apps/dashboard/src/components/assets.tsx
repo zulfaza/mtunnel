@@ -2,9 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Copy, ExternalLink, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { Schemas } from "@tunnel/core";
-import { signOut } from "../server/auth.js";
 import { createPreview, deletePreview, updatePreview } from "../server/previews.js";
-import { OrganizationSwitcher } from "./organization-switcher.js";
 import { SectionHeading, Shell } from "./shell.js";
 import { Badge } from "./ui/badge.js";
 import { Button } from "./ui/button.js";
@@ -54,10 +52,8 @@ const VISIBILITY_BADGE: Record<Preview["visibility"], ReactNode> = {
 };
 
 export function AssetsPage({
-  email,
   initialPreviews,
 }: {
-  readonly email: string;
   readonly initialPreviews: readonly Preview[] | null;
 }): ReactNode {
   const navigate = useNavigate();
@@ -155,24 +151,8 @@ export function AssetsPage({
     });
   };
 
-  const logOut = (): void => {
-    void signOut()
-      .then(() => navigate({ to: "/login" }))
-      .catch(fail);
-  };
-
   return (
-    <Shell
-      actions={
-        <span className="flex items-center gap-3">
-          <OrganizationSwitcher />
-          <span className="hidden text-[13px] text-muted-foreground sm:inline">{email}</span>
-          <Button onClick={logOut} variant="ghost">
-            sign out
-          </Button>
-        </span>
-      }
-    >
+    <Shell>
       <section className="flex-1 px-5 py-8 sm:px-8">
         <SectionHeading>Assets</SectionHeading>
         <h1 className="mt-4 text-2xl font-medium tracking-tight">Preview assets</h1>
