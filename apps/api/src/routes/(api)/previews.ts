@@ -1,6 +1,6 @@
 import { limitsForOrganization } from "../../access.js";
 import { Effect } from "effect";
-import { Previews } from "@tunnel/core";
+import { Previews, Schemas } from "@tunnel/core";
 import { authenticateUser, authErrorResponse } from "../../auth/workos.js";
 import type { Env } from "../../env.js";
 import {
@@ -28,6 +28,9 @@ interface PreviewRow {
   readonly expires_at: number;
   readonly manifest: string;
   readonly visibility: string;
+  readonly repo_host: string | null;
+  readonly repo_org: string | null;
+  readonly repo_name: string | null;
 }
 
 interface VisibilityInput {
@@ -35,25 +38,20 @@ interface VisibilityInput {
   readonly accessCodeHash: string | null;
 }
 
-async function visibilityFromBody(body: Record<string, unknown>): Promise<VisibilityInput | null> {
+async function visibilityFromBody(
+  body: Record<string, unknown>,
+  authSecret: string | undefined,
+): Promise<VisibilityInput | null> {
   const visibility = "visibility" in body ? body.visibility : "public";
   if (!isPreviewVisibility(visibility)) return null;
   const accessCode = "accessCode" in body ? body.accessCode : undefined;
   if (visibility === "code") {
     if (!isAccessCode(accessCode)) return null;
-    return { visibility, accessCodeHash: await hashAccessCode(accessCode) };
+    if (authSecret === undefined) return null;
+    return { visibility, accessCodeHash: await hashAccessCode(accessCode, authSecret) };
   }
   if (accessCode !== undefined) return null;
   return { visibility, accessCodeHash: null };
-}
-
-function isPreviewPath(value: string): boolean {
-  return (
-    value !== "" &&
-    !value.startsWith("/") &&
-    !value.includes("\\") &&
-    !value.split("/").includes("..")
-  );
 }
 
 function validFile(value: unknown): value is PreviewFile {
@@ -61,7 +59,7 @@ function validFile(value: unknown): value is PreviewFile {
   return (
     "path" in value &&
     typeof value.path === "string" &&
-    isPreviewPath(value.path) &&
+    Schemas.isPreviewPath(value.path) &&
     "size" in value &&
     typeof value.size === "number" &&
     Number.isSafeInteger(value.size) &&
@@ -76,26 +74,25 @@ function validFile(value: unknown): value is PreviewFile {
   );
 }
 
-function previewID(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  const alphabet = "abcdefghijklmnopqrstuvwxyz234567";
-  let output = "";
-  let bits = 0;
-  let value = 0;
-  for (const byte of bytes) {
-    value = (value << 8) | byte;
-    bits += 8;
-    while (bits >= 5) {
-      output += alphabet[(value >>> (bits - 5)) & 31] ?? "";
-      bits -= 5;
-    }
-  }
-  if (bits > 0) output += alphabet[(value << (5 - bits)) & 31] ?? "";
-  return output;
+function optionalText(body: Record<string, unknown>, key: string): string | null {
+  const value = body[key];
+  return value === undefined || value === null ? null : typeof value === "string" ? value : null;
 }
 
-function previewResponse(row: PreviewRow, domain: string): Record<string, string | number> {
+function optionalPreviewMetadata(body: Record<string, unknown>): boolean {
+  return ["repoHost", "repoOrg", "repoName"].every((key) => {
+    const value = body[key];
+    return (
+      value === undefined || value === null || (typeof value === "string" && value.length <= 255)
+    );
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function previewResponse(row: PreviewRow, domain: string): Record<string, string | number | null> {
   return {
     id: row.id,
     name: row.name,
@@ -105,6 +102,9 @@ function previewResponse(row: PreviewRow, domain: string): Record<string, string
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     visibility: row.visibility,
+    repoHost: row.repo_host,
+    repoOrg: row.repo_org,
+    repoName: row.repo_name,
   };
 }
 
@@ -130,19 +130,18 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     return jsonError(400, "bad_request");
   }
   if (
-    typeof body !== "object" ||
-    body === null ||
-    Array.isArray(body) ||
+    !isRecord(body) ||
     !("name" in body) ||
     !("files" in body) ||
     typeof body.name !== "string" ||
     body.name === "" ||
     body.name.length > 255 ||
     !Array.isArray(body.files) ||
-    !body.files.every(validFile)
+    !body.files.every(validFile) ||
+    !optionalPreviewMetadata(body)
   )
     return jsonError(400, "bad_request");
-  const visibilityInput = await visibilityFromBody(body as Record<string, unknown>);
+  const visibilityInput = await visibilityFromBody(body, env.AUTH_SECRET);
   if (visibilityInput === null) return jsonError(400, "bad_request");
   const files = body.files;
   const paths = new Set(files.map((file) => file.path));
@@ -174,7 +173,7 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
   const now = Date.now();
   const expiresAt = now + Number(env.PREVIEW_TTL_SECONDS ?? limits.previewTTLSeconds) * 1000;
   const row: PreviewRow = {
-    id: previewID(),
+    id: Previews.previewId(),
     name: body.name,
     manifest: JSON.stringify(files),
     total_bytes: totalBytes,
@@ -182,9 +181,12 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     created_at: now,
     expires_at: expiresAt,
     visibility: visibilityInput.visibility,
+    repo_host: optionalText(body, "repoHost"),
+    repo_org: optionalText(body, "repoOrg"),
+    repo_name: optionalText(body, "repoName"),
   };
   await env.DOMAINS.prepare(
-    "INSERT INTO previews (id, organization_id, user_id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO previews (id, organization_id, user_id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   )
     .bind(
       row.id,
@@ -198,6 +200,9 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
       row.expires_at,
       row.visibility,
       visibilityInput.accessCodeHash,
+      row.repo_host,
+      row.repo_org,
+      row.repo_name,
     )
     .run();
   return jsonResponse(previewResponse(row, env.PREVIEW_DOMAIN), 201);
@@ -218,10 +223,10 @@ export async function handlePreviewUpdate(
   }
   if (typeof body !== "object" || body === null || Array.isArray(body) || !("visibility" in body))
     return jsonError(400, "bad_request");
-  const visibilityInput = await visibilityFromBody(body as Record<string, unknown>);
+  const visibilityInput = await visibilityFromBody(body, env.AUTH_SECRET);
   if (visibilityInput === null) return jsonError(400, "bad_request");
   const updated = await env.DOMAINS.prepare(
-    "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ? RETURNING id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility",
+    "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ? RETURNING id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name",
   )
     .bind(
       visibilityInput.visibility,
@@ -265,10 +270,15 @@ export async function handlePreviewUpload(
     request.headers.get("content-length") !== String(file.size)
   )
     return jsonError(400, "bad_request");
-  await env.PREVIEWS.put(`${id}/${path}`, request.body, {
-    httpMetadata: { contentType: file.contentType },
-    sha256: file.sha256,
-  });
+  const exactSize = await Previews.putPreviewObject(
+    env.PREVIEWS,
+    `${id}/${path}`,
+    request.body,
+    file.size,
+    file.contentType,
+    file.sha256,
+  );
+  if (!exactSize) return jsonError(400, "bad_request");
   return new Response(null, { status: 204 });
 }
 
@@ -276,7 +286,7 @@ export async function handlePreviewList(request: Request, env: Env): Promise<Res
   const auth = await authenticateUser(request, env);
   if (!auth.ok) return authErrorResponse(auth);
   const result = await env.DOMAINS.prepare(
-    "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
+    "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
   )
     .bind(auth.organizationId, Date.now())
     .all<PreviewRow>();
@@ -293,7 +303,7 @@ export async function handlePreviewDelete(
   const auth = await authenticateUser(request, env);
   if (!auth.ok) return authErrorResponse(auth);
   const row = await env.DOMAINS.prepare(
-    "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
+    "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
   )
     .bind(id, auth.organizationId, auth.userId)
     .first<PreviewRow>();
@@ -310,7 +320,7 @@ export function previewUploadPath(
   if (match?.[1] === undefined || match[2] === undefined) return null;
   try {
     const path = decodeURIComponent(match[2]);
-    return isPreviewPath(path) ? { id: match[1], path } : null;
+    return Schemas.isPreviewPath(path) ? { id: match[1], path } : null;
   } catch {
     return null;
   }

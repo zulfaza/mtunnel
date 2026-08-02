@@ -9,6 +9,14 @@ import {
 import { errorPage, previewCodePage } from "../(web)/pages.js";
 import { siteNotFound } from "../(web)/site.js";
 
+const HTML_ESCAPES: Readonly<Record<string, string>> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
 function headers(contentType: string | undefined, etag: string, cacheControl: string): Headers {
   const output = new Headers({
     "x-content-type-options": "nosniff",
@@ -35,17 +43,7 @@ function requestedRange(value: string | null): R2Range | undefined {
 }
 
 function escapeHTML(value: string): string {
-  return value.replace(
-    /[&<>"']/gu,
-    (character) =>
-      new Map([
-        ["&", "&amp;"],
-        ["<", "&lt;"],
-        [">", "&gt;"],
-        ['"', "&quot;"],
-        ["'", "&#39;"],
-      ]).get(character) ?? character,
-  );
+  return value.replace(/[&<>"']/gu, (character) => HTML_ESCAPES[character] ?? character);
 }
 
 async function listing(env: Env, id: string, cacheControl: string): Promise<Response> {
@@ -81,6 +79,9 @@ async function handleCodeSubmission(
 ): Promise<Response> {
   if (env.AUTH_SECRET === undefined || preview.access_code_hash === null)
     return errorPage(503, "server_misconfigured", "This preview cannot verify access codes.");
+  const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const limited = await env.PREVIEW_RATE_LIMITER.limit({ key: `${clientIp}:${id}` });
+  if (!limited.success) return errorPage(429, "rate_limited", "Too many access attempts.");
   let submitted = "";
   try {
     const form = await request.formData();
@@ -89,7 +90,10 @@ async function handleCodeSubmission(
   } catch {
     return previewCodePage(true);
   }
-  if (submitted === "" || !(await verifyAccessCode(submitted, preview.access_code_hash)))
+  if (
+    submitted === "" ||
+    !(await verifyAccessCode(submitted, preview.access_code_hash, env.AUTH_SECRET))
+  )
     return previewCodePage(true);
   const cookie = await previewAccessCookieValue(env.AUTH_SECRET, id, preview.access_code_hash);
   const maxAge = Math.max(1, Math.floor((preview.expires_at - Date.now()) / 1000));

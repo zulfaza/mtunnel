@@ -31,6 +31,16 @@
       "namespace_id": "1002",
       "simple": { "limit": 300, "period": 60 },
     },
+    {
+      "name": "PREVIEW_RATE_LIMITER",
+      "namespace_id": "1003",
+      "simple": { "limit": 10, "period": 60 },
+    },
+    {
+      "name": "API_RATE_LIMITER",
+      "namespace_id": "1004",
+      "simple": { "limit": 60, "period": 60 },
+    },
   ],
   "d1_databases": [
     {

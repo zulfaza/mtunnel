@@ -29,51 +29,19 @@ const Invitation = Schema.Struct({
   organization_id: Schema.String,
 });
 const InvitationResponse = Schema.Struct({ data: Schema.Array(Invitation) });
-const OrganizationDomain = Schema.Struct({ domain: Schema.String, state: Schema.String });
 const Organization = Schema.Struct({
   id: Schema.String,
   name: Schema.optionalKey(Schema.String),
-  domain_data: Schema.optionalKey(Schema.Array(OrganizationDomain)),
 });
-const OrganizationResponse = Schema.Struct({ data: Schema.Array(Organization) });
 
 const decodeUser = Schema.decodeUnknownOption(WorkosUser);
 const decodeMemberships = Schema.decodeUnknownOption(MembershipResponse);
 const decodeInvitations = Schema.decodeUnknownOption(InvitationResponse);
-const decodeOrganizations = Schema.decodeUnknownOption(OrganizationResponse);
 const decodeOrganization = Schema.decodeUnknownOption(Organization);
-
-const PUBLIC_EMAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "ymail.com",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "msn.com",
-  "icloud.com",
-  "me.com",
-  "mac.com",
-  "aol.com",
-  "protonmail.com",
-  "proton.me",
-  "pm.me",
-  "mail.com",
-  "gmx.com",
-  "yandex.com",
-  "zoho.com",
-  "fastmail.com",
-]);
 
 function organizationName(user: WorkosUser): string {
   const personName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
   return `${personName === "" ? user.email : personName}'s Organization`;
-}
-
-function companyDomain(email: string): string | null {
-  const domain = email.slice(email.lastIndexOf("@") + 1).toLowerCase();
-  return PUBLIC_EMAIL_DOMAINS.has(domain) ? null : domain;
 }
 
 function activeMemberships(input: unknown): readonly OrganizationMembershipView[] {
@@ -144,31 +112,14 @@ export const organizationsLayer = Layer.effect(
       return pendingInvitationOrganization(value);
     });
 
-    const domainOrganizationId = Effect.fn("organizations.by_domain")(function* (domain: string) {
-      const query = new URLSearchParams();
-      query.append("domains", domain);
-      const value = yield* workos.request(`/organizations?${query.toString()}`);
-      const decoded = decodeOrganizations(value);
-      if (decoded._tag === "None") return null;
-      return (
-        decoded.value.data.find((organization) =>
-          organization.domain_data?.some(
-            (entry) => entry.domain === domain && entry.state === "verified",
-          ),
-        )?.id ?? null
-      );
-    });
-
     const createPersonalOrganization = Effect.fn("organizations.create_personal")(function* (
       user: WorkosUser,
     ) {
-      const domain = user.email_verified ? companyDomain(user.email) : null;
       const value = yield* workos.request("/organizations", {
         method: "POST",
         body: JSON.stringify({
           name: organizationName(user),
           external_id: `ztunnel-user:${user.id}`,
-          ...(domain === null ? {} : { domain_data: [{ domain, state: "verified" }] }),
         }),
       });
       const decoded = decodeOrganization(value);
@@ -244,12 +195,8 @@ export const organizationsLayer = Layer.effect(
           new WorkosRequestError({ message: "WorkOS user has an invalid email address" }),
         );
       const invited = user.email_verified ? yield* invitedOrganizationId(user.email) : null;
-      const domain = user.email_verified ? companyDomain(user.email) : null;
-      const domainMatched =
-        invited === null && domain !== null ? yield* domainOrganizationId(domain) : null;
       const externalId = `ztunnel-user:${user.id}`;
-      let organizationId =
-        invited ?? domainMatched ?? (yield* organizationForExternalId(externalId));
+      let organizationId = invited ?? (yield* organizationForExternalId(externalId));
       if (organizationId === null) {
         const created = yield* Effect.result(createPersonalOrganization(user));
         organizationId =

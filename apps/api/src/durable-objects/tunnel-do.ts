@@ -167,6 +167,8 @@ export class TunnelDO extends DurableObject<Env> {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly usage = new Map<string, UsageSummary>();
   private readonly limits: Limits;
+  private activeSocket: WebSocket | null = null;
+  private activeAttachment: Attachment | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -255,11 +257,13 @@ export class TunnelDO extends DurableObject<Env> {
     )
       return jsonError(400, "bad_request");
     for (const existing of this.ctx.getWebSockets()) existing.close(4001, "replaced");
+    this.activeSocket = null;
+    this.activeAttachment = null;
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({
+    const attachment = {
       tunnelId,
       publicOrigin,
       devRouting: request.headers.get("x-mtunnel-dev-routing") === "true",
@@ -272,7 +276,10 @@ export class TunnelDO extends DurableObject<Env> {
       idleSeconds,
       expiresAt: 0,
       idleAt: 0,
-    } satisfies Attachment);
+    } satisfies Attachment;
+    server.serializeAttachment(attachment);
+    this.activeSocket = server;
+    this.activeAttachment = attachment;
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -282,11 +289,18 @@ export class TunnelDO extends DurableObject<Env> {
   }
 
   private connectedSocket(): WebSocket | null {
-    return (
-      this.ctx
-        .getWebSockets()
-        .find((socket) => this.attachment(socket)?.handshakeComplete === true) ?? null
-    );
+    if (this.activeSocket !== null) {
+      return this.activeAttachment?.handshakeComplete === true ? this.activeSocket : null;
+    }
+    for (const socket of this.ctx.getWebSockets()) {
+      const attachment = this.attachment(socket);
+      if (attachment?.handshakeComplete === true) {
+        this.activeSocket = socket;
+        this.activeAttachment = attachment;
+        return socket;
+      }
+    }
+    return null;
   }
 
   private send(ws: WebSocket, message: Parameters<typeof encodeMessage>[0]): boolean {
@@ -647,6 +661,8 @@ export class TunnelDO extends DurableObject<Env> {
       idleAt: attachment.idleSeconds === 0 ? 0 : now + attachment.idleSeconds * 1000,
     } satisfies Attachment;
     ws.serializeAttachment(activeAttachment);
+    this.activeSocket = ws;
+    this.activeAttachment = activeAttachment;
     await this.scheduleAccessAlarm(activeAttachment);
     await this.ctx.storage.put("metadata", {
       tunnelId,
@@ -663,6 +679,10 @@ export class TunnelDO extends DurableObject<Env> {
     _wasClean: boolean,
   ): Promise<void> {
     const attachment = this.attachment(ws);
+    if (ws === this.activeSocket) {
+      this.activeSocket = null;
+      this.activeAttachment = null;
+    }
     if (attachment !== null) {
       this.flushUsage(attachment.connectionId);
       await this.env.REGISTRY.getByName("global").releaseConnection(
@@ -707,6 +727,7 @@ export class TunnelDO extends DurableObject<Env> {
       idleAt,
     } satisfies Attachment;
     ws.serializeAttachment(activeAttachment);
+    if (ws === this.activeSocket) this.activeAttachment = activeAttachment;
     await this.scheduleAccessAlarm(activeAttachment);
   }
 
@@ -732,6 +753,10 @@ export class TunnelDO extends DurableObject<Env> {
     const detail = error instanceof Error ? error.message : "websocket error";
     logEvent({ event: "websocket_error", error: detail });
     const attachment = this.attachment(ws);
+    if (ws === this.activeSocket) {
+      this.activeSocket = null;
+      this.activeAttachment = null;
+    }
     if (attachment !== null) this.flushUsage(attachment.connectionId);
     this.failAll("upstream_error");
   }

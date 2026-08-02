@@ -106,11 +106,11 @@ func TestPreviewCreateSendsVisibilityAndAccessCode(t *testing.T) {
 	cmd := newPreviewCmd(&rootOptions{config: configPath})
 	var output bytes.Buffer
 	cmd.SetOut(&output)
-	cmd.SetArgs([]string{page, "--visibility", "code", "--code", "letmein"})
+	cmd.SetArgs([]string{page, "--visibility", "code", "--code", "letmein-secure"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if createBody["visibility"] != "code" || createBody["accessCode"] != "letmein" {
+	if createBody["visibility"] != "code" || createBody["accessCode"] != "letmein-secure" {
 		t.Fatalf("unexpected create body: %#v", createBody)
 	}
 	if !strings.Contains(output.String(), "https://preview.makarima.xyz/pv1/index.html") {
@@ -148,10 +148,10 @@ func TestPreviewVisibilityFlagValidation(t *testing.T) {
 		want string
 	}{
 		{"code without access code", []string{"index.html", "--visibility", "code"}, "--code is required"},
-		{"access code with public", []string{"index.html", "--code", "letmein"}, "--code is only allowed"},
+		{"access code with public", []string{"index.html", "--code", "letmein-secure"}, "--code is only allowed"},
 		{"invalid visibility", []string{"index.html", "--visibility", "friends"}, "invalid visibility"},
 		{"subcommand code without access code", []string{"visibility", "pv1", "code"}, "--code is required"},
-		{"subcommand access code with private", []string{"visibility", "pv1", "private", "--code", "letmein"}, "--code is only allowed"},
+		{"subcommand access code with private", []string{"visibility", "pv1", "private", "--code", "letmein-secure"}, "--code is only allowed"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -185,14 +185,14 @@ func TestPreviewVisibilitySubcommand(t *testing.T) {
 	cmd := newPreviewCmd(&rootOptions{config: configPath})
 	var output bytes.Buffer
 	cmd.SetOut(&output)
-	cmd.SetArgs([]string{"visibility", "pv1", "code", "--code", "letmein"})
+	cmd.SetArgs([]string{"visibility", "pv1", "code", "--code", "letmein-secure"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
 	if method != http.MethodPatch || path != "/api/v1/previews/pv1" {
 		t.Fatalf("request = %s %s", method, path)
 	}
-	if patchBody["visibility"] != "code" || patchBody["accessCode"] != "letmein" {
+	if patchBody["visibility"] != "code" || patchBody["accessCode"] != "letmein-secure" {
 		t.Fatalf("unexpected patch body: %#v", patchBody)
 	}
 	if output.String() != "Preview pv1 visibility set to code.\n" {
@@ -254,4 +254,45 @@ func TestBuildPreviewManifestRejectsSymlink(t *testing.T) {
 	if _, _, err := buildPreviewManifest(link); err == nil {
 		t.Fatal("expected symlink error")
 	}
+}
+
+func TestParsePreviewRemote(t *testing.T) {
+	tests := []struct {
+		remote string
+		host   string
+		org    string
+		name   string
+	}{
+		{"git@github.com:acme/site.git", "github.com", "acme", "site"},
+		{"https://gitlab.example/acme/site.git", "gitlab.example", "acme", "site"},
+		{"acme/site", "", "acme", "site"},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.remote, func(t *testing.T) {
+			parsed := parsePreviewRemote(&testCase.remote)
+			if value := stringValue(parsed.host); value != testCase.host {
+				t.Fatalf("host = %q, want %q", value, testCase.host)
+			}
+			if value := stringValue(parsed.org); value != testCase.org {
+				t.Fatalf("org = %q, want %q", value, testCase.org)
+			}
+			if value := stringValue(parsed.name); value != testCase.name {
+				t.Fatalf("name = %q, want %q", value, testCase.name)
+			}
+		})
+	}
+}
+
+func TestCollectPreviewRepoMetadataOutsideGit(t *testing.T) {
+	metadata := collectPreviewRepoMetadata(t.TempDir())
+	if metadata.RepoHost != nil || metadata.RepoOrg != nil || metadata.RepoName != nil {
+		t.Fatalf("unexpected repository metadata: %#v", metadata)
+	}
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

@@ -72,7 +72,7 @@ describe("previews", () => {
       body: JSON.stringify({
         name: "gated",
         visibility: "code",
-        accessCode: "open-sesame",
+        accessCode: "open-sesame!",
         files: [
           {
             path: "index.html",
@@ -103,7 +103,7 @@ describe("previews", () => {
     const unlocked = await SELF.fetch(`http://preview.worker.test/${preview.id}/`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "code=open-sesame",
+      body: "code=open-sesame%21",
       redirect: "manual",
     });
     expect(unlocked.status).toBe(303);

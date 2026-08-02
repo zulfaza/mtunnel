@@ -71,7 +71,7 @@ function bearer(request: Request): string | null {
 
 export type UserAuth =
   | { readonly ok: true; readonly userId: string; readonly organizationId: string }
-  | { readonly ok: false; readonly status: 401 | 403 | 503 };
+  | { readonly ok: false; readonly status: 401 | 403 | 429 | 503 };
 
 export async function authenticateUser(request: Request, env: Env): Promise<UserAuth> {
   try {
@@ -85,6 +85,10 @@ export async function authenticateUser(request: Request, env: Env): Promise<User
         });
       }),
     );
+    const limited = await env.API_RATE_LIMITER.limit({
+      key: `${currentUser.userId}:${currentUser.organizationId}`,
+    });
+    if (!limited.success) return { ok: false, status: 429 };
     return { ok: true, userId: currentUser.userId, organizationId: currentUser.organizationId };
   } catch (error: unknown) {
     if (error instanceof Errors.UnauthorizedError) return { ok: false, status: 401 };

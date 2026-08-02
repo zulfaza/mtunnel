@@ -8,6 +8,18 @@ import { errorPage } from "../(web)/pages.js";
 
 const OFFLINE_CACHE_MS = 5_000;
 const offlineUntil = new Map<string, number>();
+let lastOfflineSweep = 0;
+
+function sweepOfflineCache(now: number): void {
+  if (now - lastOfflineSweep < 60_000 && offlineUntil.size < 1_000) return;
+  lastOfflineSweep = now;
+  for (const [key, until] of offlineUntil) if (until <= now) offlineUntil.delete(key);
+  while (offlineUntil.size >= 1_000) {
+    const oldest = offlineUntil.keys().next().value;
+    if (oldest === undefined) break;
+    offlineUntil.delete(oldest);
+  }
+}
 
 function publicOrigin(url: URL): string {
   return `${url.protocol}//${url.host}`;
@@ -106,7 +118,6 @@ function withCors(response: Response, request: Request): Response {
   if (origin === null) return response;
   const headers = new Headers(response.headers);
   headers.set("access-control-allow-origin", origin);
-  headers.set("access-control-allow-credentials", "true");
   headers.append("vary", "origin");
   return new Response(response.body, {
     status: response.status,
@@ -120,7 +131,6 @@ function preflightResponse(request: Request): Response {
   const origin = request.headers.get("origin");
   if (origin !== null) {
     headers.set("access-control-allow-origin", origin);
-    headers.set("access-control-allow-credentials", "true");
     headers.append("vary", "origin");
   }
   const requestedMethod = request.headers.get("access-control-request-method");
@@ -148,6 +158,7 @@ export async function forwardProxy(
   url: URL,
   routeType: "standard_domain" | "custom_domain" | "development_path",
 ): Promise<Response> {
+  sweepOfflineCache(Date.now());
   const isPreflight =
     request.method === "OPTIONS" && request.headers.has("access-control-request-method");
   if (isPreflight && (await env.TUNNELS.getByName(tunnelId).corsEnabled()))

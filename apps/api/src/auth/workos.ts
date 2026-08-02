@@ -9,15 +9,17 @@ import { jsonError } from "../utils/json.js";
 
 export type UserAuth =
   | { readonly ok: true; readonly userId: string; readonly organizationId: string }
-  | { readonly ok: false; readonly status: 401 | 403 | 503 };
+  | { readonly ok: false; readonly status: 401 | 403 | 429 | 503 };
 
-export function authErrorResponse(auth: { readonly status: 401 | 403 | 503 }): Response {
+export function authErrorResponse(auth: { readonly status: 401 | 403 | 429 | 503 }): Response {
   const error =
     auth.status === 401
       ? "unauthorized"
       : auth.status === 403
         ? "forbidden"
-        : "organization_unavailable";
+        : auth.status === 429
+          ? "rate_limited"
+          : "organization_unavailable";
   return jsonError(auth.status, error);
 }
 

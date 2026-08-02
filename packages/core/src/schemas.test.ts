@@ -20,7 +20,7 @@ describe("core schemas", () => {
   it("keeps preview manifest constraints at the boundary", () => {
     expect(Schema.decodeUnknownSync(TunnelId)("local-dev")).toBe("local-dev");
     expect(Schema.decodeUnknownSync(PreviewVisibility)("private")).toBe("private");
-    expect(Schema.decodeUnknownSync(AccessCode)("letmein")).toBe("letmein");
+    expect(Schema.decodeUnknownSync(AccessCode)("letmein-secure")).toBe("letmein-secure");
     expect(() => Schema.decodeUnknownSync(AccessCode)("no")).toThrow();
     expect(() =>
       Schema.decodeUnknownSync(PreviewFile)({

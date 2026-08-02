@@ -1,6 +1,14 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Copy, ExternalLink, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import type { Schemas } from "@tunnel/core";
 import { createPreview, deletePreview, updatePreview } from "../server/previews.js";
 import { SectionHeading, Shell } from "./shell.js";
@@ -20,6 +28,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.js";
 
 type Preview = Schemas.PreviewView;
+
+interface PreviewGroup {
+  readonly key: string;
+  readonly label: string;
+  readonly href: string | null;
+  readonly previews: readonly Preview[];
+}
 
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
@@ -50,6 +65,38 @@ const VISIBILITY_BADGE: Record<Preview["visibility"], ReactNode> = {
   private: <Badge variant="destructive">private</Badge>,
   code: <Badge>code</Badge>,
 };
+
+function groupPreviews(previews: readonly Preview[]): readonly PreviewGroup[] {
+  const groups = new Map<string, PreviewGroup>();
+  for (const preview of previews) {
+    const hasRepository =
+      preview.repoOrg !== null &&
+      preview.repoOrg !== "" &&
+      preview.repoName !== null &&
+      preview.repoName !== "";
+    const key = hasRepository ? `${preview.repoOrg}/${preview.repoName}` : "";
+    const existing = groups.get(key);
+    if (existing !== undefined) {
+      groups.set(key, { ...existing, previews: [...existing.previews, preview] });
+      continue;
+    }
+    const href =
+      hasRepository && preview.repoHost !== null
+        ? `https://${preview.repoHost}/${preview.repoOrg}/${preview.repoName}`
+        : null;
+    groups.set(key, {
+      key,
+      label: hasRepository ? key : "No repository",
+      href,
+      previews: [preview],
+    });
+  }
+  return [...groups.values()].sort((left, right) => {
+    if (left.key === "") return 1;
+    if (right.key === "") return -1;
+    return left.label.localeCompare(right.label);
+  });
+}
 
 export function AssetsPage({
   initialPreviews,
@@ -105,7 +152,7 @@ export function AssetsPage({
 
   const submitAccessCode = (event: FormEvent): void => {
     event.preventDefault();
-    if (codePrompt === null || accessCode.length < 4) return;
+    if (codePrompt === null || accessCode.length < 12) return;
     void applyVisibility(codePrompt, "code", accessCode).then(() => {
       setCodePrompt(null);
       setAccessCode("");
@@ -214,79 +261,104 @@ export function AssetsPage({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {previews.map((preview) => (
-                  <TableRow key={preview.id}>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium text-foreground">{preview.name}</span>
-                        <a
-                          className="inline-flex items-center gap-1 text-xs text-accent-text underline-offset-4 hover:underline"
-                          href={preview.url}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          {new URL(preview.url).host}/{preview.id.slice(0, 8)}…
-                          <ExternalLink className="size-3" />
-                        </a>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Select
-                          onValueChange={(value) => {
-                            if (!isPreviewVisibility(value)) return;
-                            const visibility = value;
-                            if (visibility === "code") {
-                              setCodePrompt(preview);
-                              setAccessCode("");
-                              return;
-                            }
-                            void applyVisibility(preview, visibility);
-                          }}
-                          value={preview.visibility}
-                        >
-                          <SelectTrigger className="w-36">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="public">public</SelectItem>
-                            <SelectItem value="private">private</SelectItem>
-                            <SelectItem value="code">public with code</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {VISIBILITY_BADGE[preview.visibility]}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{preview.fileCount}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatBytes(preview.totalBytes)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatExpiry(preview.expiresAt)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          aria-label="Copy URL"
-                          onClick={() => copyUrl(preview)}
-                          size="icon"
-                          title={copiedId === preview.id ? "Copied" : "Copy URL"}
-                          variant="ghost"
-                        >
-                          <Copy className={copiedId === preview.id ? "text-accent-text" : ""} />
-                        </Button>
-                        <Button
-                          aria-label="Delete preview"
-                          onClick={() => void removePreview(preview)}
-                          size="icon"
-                          title="Delete"
-                          variant="destructive"
-                        >
-                          <Trash2 />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                {groupPreviews(previews).map((group) => (
+                  <Fragment key={group.key || "no-repository"}>
+                    <TableRow>
+                      <TableCell className="bg-muted py-2 text-xs font-medium" colSpan={6}>
+                        {group.href === null ? (
+                          group.label
+                        ) : (
+                          <a
+                            className="text-accent-text underline-offset-4 hover:underline"
+                            href={group.href}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            {group.label}
+                          </a>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                    {group.previews.map((preview) => (
+                      <TableRow key={preview.id}>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground">{preview.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {preview.repoOrg !== null && preview.repoName !== null
+                                ? `${preview.repoOrg}/${preview.repoName}`
+                                : "No repository"}
+                            </span>
+                            <a
+                              className="inline-flex items-center gap-1 text-xs text-accent-text underline-offset-4 hover:underline"
+                              href={preview.url}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              {new URL(preview.url).host}/{preview.id.slice(0, 8)}…
+                              <ExternalLink className="size-3" />
+                            </a>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Select
+                              onValueChange={(value) => {
+                                if (!isPreviewVisibility(value)) return;
+                                const visibility = value;
+                                if (visibility === "code") {
+                                  setCodePrompt(preview);
+                                  setAccessCode("");
+                                  return;
+                                }
+                                void applyVisibility(preview, visibility);
+                              }}
+                              value={preview.visibility}
+                            >
+                              <SelectTrigger className="w-36">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="public">public</SelectItem>
+                                <SelectItem value="private">private</SelectItem>
+                                <SelectItem value="code">public with code</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            {VISIBILITY_BADGE[preview.visibility]}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{preview.fileCount}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatBytes(preview.totalBytes)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatExpiry(preview.expiresAt)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              aria-label="Copy URL"
+                              onClick={() => copyUrl(preview)}
+                              size="icon"
+                              title={copiedId === preview.id ? "Copied" : "Copy URL"}
+                              variant="ghost"
+                            >
+                              <Copy className={copiedId === preview.id ? "text-accent-text" : ""} />
+                            </Button>
+                            <Button
+                              aria-label="Delete preview"
+                              onClick={() => void removePreview(preview)}
+                              size="icon"
+                              title="Delete"
+                              variant="destructive"
+                            >
+                              <Trash2 />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>
@@ -324,7 +396,7 @@ export function AssetsPage({
               <Button onClick={() => setCodePrompt(null)} type="button">
                 Cancel
               </Button>
-              <Button disabled={accessCode.length < 4} type="submit" variant="primary">
+              <Button disabled={accessCode.length < 12} type="submit" variant="primary">
                 Protect asset
               </Button>
             </DialogFooter>

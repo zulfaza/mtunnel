@@ -386,14 +386,21 @@ export const customDomainsLayer = Layer.effect(
     });
 
     const list = Effect.fn("domains.list")(function* (organizationId: string, userId: string) {
-      yield* Effect.promise(() =>
+      const legacy = yield* Effect.promise(() =>
         database
-          .prepare(
-            "UPDATE custom_domains SET organization_id = ?, updated_at = ? WHERE organization_id = ?",
-          )
-          .bind(organizationId, Date.now(), userId)
-          .run(),
+          .prepare("SELECT hostname FROM custom_domains WHERE organization_id = ? LIMIT 1")
+          .bind(userId)
+          .first<{ hostname: string }>(),
       );
+      if (legacy !== null)
+        yield* Effect.promise(() =>
+          database
+            .prepare(
+              "UPDATE custom_domains SET organization_id = ?, updated_at = ? WHERE organization_id = ?",
+            )
+            .bind(organizationId, Date.now(), userId)
+            .run(),
+        );
       const result = yield* Effect.promise(() =>
         database
           .prepare(

@@ -75,6 +75,9 @@ export const createPreview = createServerFn({ method: "POST" })
       readonly files: readonly Schemas.PreviewFile[];
       readonly visibility?: Schemas.PreviewVisibility;
       readonly accessCode?: string;
+      readonly repoHost?: string | null;
+      readonly repoOrg?: string | null;
+      readonly repoName?: string | null;
     }) => data,
   )
   .handler(
@@ -86,6 +89,9 @@ export const createPreview = createServerFn({ method: "POST" })
         readonly files: readonly Schemas.PreviewFile[];
         readonly visibility?: Schemas.PreviewVisibility;
         readonly accessCode?: string;
+        readonly repoHost?: string | null;
+        readonly repoOrg?: string | null;
+        readonly repoName?: string | null;
       };
     }) => {
       const user = await requireUser();
@@ -94,6 +100,9 @@ export const createPreview = createServerFn({ method: "POST" })
         files: data.files,
         ...(data.visibility === undefined ? {} : { visibility: data.visibility }),
         ...(data.accessCode === undefined ? {} : { accessCode: data.accessCode }),
+        ...(data.repoHost === undefined ? {} : { repoHost: data.repoHost }),
+        ...(data.repoOrg === undefined ? {} : { repoOrg: data.repoOrg }),
+        ...(data.repoName === undefined ? {} : { repoName: data.repoName }),
       };
       return runCore(
         Effect.gen(function* () {

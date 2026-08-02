@@ -1,0 +1,2 @@
+ts	phase	decision	why	evidence	result
+2026-08-02T05:18:07Z	baseline	preserved existing worktree as a separate commit	migration should not mix with unrelated feature changes	git status --short; git diff --stat	open

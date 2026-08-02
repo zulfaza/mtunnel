@@ -25,8 +25,10 @@ export function isValidHostname(value: string): boolean {
 export const PreviewVisibility = Schema.Literals(["public", "private", "code"]);
 export type PreviewVisibility = Schema.Schema.Type<typeof PreviewVisibility>;
 
+export const ACCESS_CODE_MINIMUM_LENGTH = 12;
+
 export const AccessCode = Schema.String.pipe(
-  Schema.check(Schema.isMinLength(4)),
+  Schema.check(Schema.isMinLength(ACCESS_CODE_MINIMUM_LENGTH)),
   Schema.check(Schema.isMaxLength(128)),
 );
 export type AccessCode = Schema.Schema.Type<typeof AccessCode>;
@@ -45,6 +47,10 @@ export const PreviewFile = Schema.Struct({
 });
 export type PreviewFile = Schema.Schema.Type<typeof PreviewFile>;
 
+export function isPreviewPath(value: string): boolean {
+  return previewPathPattern.test(value);
+}
+
 export const PreviewView = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -54,6 +60,9 @@ export const PreviewView = Schema.Struct({
   createdAt: Schema.Number,
   expiresAt: Schema.Number,
   visibility: PreviewVisibility,
+  repoHost: Schema.NullOr(Schema.String),
+  repoOrg: Schema.NullOr(Schema.String),
+  repoName: Schema.NullOr(Schema.String),
 });
 export type PreviewView = Schema.Schema.Type<typeof PreviewView>;
 
@@ -131,6 +140,9 @@ export const PreviewCreateRequest = Schema.Struct({
   files: Schema.Array(PreviewFile),
   visibility: Schema.optionalKey(PreviewVisibility),
   accessCode: Schema.optionalKey(AccessCode),
+  repoHost: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  repoOrg: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  repoName: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type PreviewCreateRequest = Schema.Schema.Type<typeof PreviewCreateRequest>;
 

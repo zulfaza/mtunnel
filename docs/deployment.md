@@ -81,6 +81,7 @@ pnpm exec wrangler secret put WORKOS_API_KEY
 pnpm exec wrangler secret put CLOUDFLARE_API_TOKEN
 pnpm exec wrangler secret put CLOUDFLARE_ZONE_ID
 pnpm exec wrangler secret put SESSION_SECRET
+pnpm exec wrangler secret put AUTH_SECRET
 ```
 
 Deploy `mtunnel-api` first so the dashboard's Durable Object bindings resolve,

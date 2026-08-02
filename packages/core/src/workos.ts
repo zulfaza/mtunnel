@@ -59,6 +59,7 @@ export class Workos extends Context.Service<
     ) => Effect.Effect<unknown, WorkosRequestError>;
     readonly form: (path: string, params: URLSearchParams) => Effect.Effect<Response>;
     readonly authenticate: (grant: WorkosGrant) => Effect.Effect<Response, WorkosRequestError>;
+    readonly revokeSession: (sessionId: string) => Effect.Effect<void, WorkosRequestError>;
   }
 >()("@tunnel/core/auth/Workos") {}
 
@@ -143,6 +144,30 @@ export const workosLayer = Layer.effect(
         }),
       );
     });
-    return Workos.of({ verifyAccessToken, request, form, authenticate });
+    const revokeSession = Effect.fn("workos.revoke_session")(function* (sessionId: string) {
+      if (config.workosApiKey === undefined)
+        return yield* Effect.fail(
+          new WorkosRequestError({ message: "WORKOS_API_KEY is not configured" }),
+        );
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          fetch("https://api.workos.com/user_management/sessions/revoke", {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${config.workosApiKey}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ session_id: sessionId }),
+          }),
+        catch: (cause) => new WorkosRequestError({ message: "WorkOS request failed", cause }),
+      });
+      if (!response.ok)
+        return yield* Effect.fail(
+          new WorkosRequestError({
+            message: `WorkOS request failed with status ${response.status}`,
+          }),
+        );
+    });
+    return Workos.of({ verifyAccessToken, request, form, authenticate, revokeSession });
   }),
 );

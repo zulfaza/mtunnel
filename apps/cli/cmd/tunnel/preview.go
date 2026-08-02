@@ -12,12 +12,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"text/tabwriter"
 	"time"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 )
@@ -42,6 +44,12 @@ type previewResult struct {
 	Visibility string `json:"visibility"`
 }
 
+type previewRepoMetadata struct {
+	RepoOrg  *string `json:"repoOrg,omitempty"`
+	RepoName *string `json:"repoName,omitempty"`
+	RepoHost *string `json:"repoHost,omitempty"`
+}
+
 func validatePreviewVisibility(visibility, accessCode string) error {
 	switch visibility {
 	case "public", "private":
@@ -51,6 +59,9 @@ func validatePreviewVisibility(visibility, accessCode string) error {
 	case "code":
 		if accessCode == "" {
 			return fmt.Errorf("--code is required when visibility is code")
+		}
+		if utf8.RuneCountInString(accessCode) < 12 {
+			return fmt.Errorf("--code must be at least 12 characters")
 		}
 	default:
 		return fmt.Errorf("invalid visibility %q (want public, private, or code)", visibility)
@@ -166,6 +177,73 @@ func buildPreviewManifest(input string) (string, []previewFile, error) {
 	return name, files, nil
 }
 
+func collectPreviewRepoMetadata(cwd string) previewRepoMetadata {
+	repoRoot := gitValue(cwd, "rev-parse", "--show-toplevel")
+	remote := gitValue(cwd, "config", "--get", "remote.origin.url")
+	parsed := parsePreviewRemote(remote)
+	org := parsed.org
+	name := parsed.name
+	if org == nil && repoRoot != nil {
+		value := filepath.Base(filepath.Dir(*repoRoot))
+		org = &value
+	}
+	if name == nil && repoRoot != nil {
+		value := filepath.Base(*repoRoot)
+		name = &value
+	}
+	return previewRepoMetadata{RepoOrg: org, RepoName: name, RepoHost: parsed.host}
+}
+
+type previewRemote struct {
+	host *string
+	org  *string
+	name *string
+}
+
+func gitValue(cwd string, arguments ...string) *string {
+	command := exec.Command("git", arguments...)
+	command.Dir = cwd
+	output, err := command.Output()
+	if err != nil {
+		return nil
+	}
+	value := strings.TrimSpace(string(output))
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func parsePreviewRemote(remote *string) previewRemote {
+	if remote == nil {
+		return previewRemote{}
+	}
+	value := strings.TrimSuffix(*remote, ".git")
+	if at := strings.IndexByte(value, '@'); at >= 0 {
+		if colon := strings.IndexByte(value[at+1:], ':'); colon >= 0 {
+			hostValue := value[at+1 : at+1+colon]
+			parts := strings.Split(strings.Trim(value[at+1+colon+1:], "/"), "/")
+			if len(parts) >= 2 {
+				return previewRemote{host: stringPointer(hostValue), org: stringPointer(parts[0]), name: stringPointer(parts[len(parts)-1])}
+			}
+		}
+	}
+	parsed, err := url.Parse(value)
+	if err == nil && parsed.Hostname() != "" {
+		parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+		if len(parts) >= 2 {
+			return previewRemote{host: stringPointer(parsed.Hostname()), org: stringPointer(parts[0]), name: stringPointer(parts[len(parts)-1])}
+		}
+	}
+	parts := strings.Split(strings.Trim(value, "/"), "/")
+	if len(parts) >= 2 {
+		return previewRemote{org: stringPointer(parts[len(parts)-2]), name: stringPointer(parts[len(parts)-1])}
+	}
+	return previewRemote{}
+}
+
+func stringPointer(value string) *string { return &value }
+
 func previewEndpoint(server, path string) (string, error) { return domainEndpoint(server, path) }
 
 func previewRequest(o *rootOptions, method, path string, body func() (io.ReadCloser, error), contentLength int64) (*http.Response, error) {
@@ -199,16 +277,17 @@ func previewRequest(o *rootOptions, method, path string, body func() (io.ReadClo
 	})
 }
 
-func createPreview(o *rootOptions, name string, files []previewFile, visibility, accessCode string) (previewResult, error) {
+func createPreview(o *rootOptions, name string, files []previewFile, metadata previewRepoMetadata, visibility, accessCode string) (previewResult, error) {
 	if visibility == "public" {
 		visibility, accessCode = "", ""
 	}
 	body, err := json.Marshal(struct {
-		Name       string        `json:"name"`
-		Files      []previewFile `json:"files"`
-		Visibility string        `json:"visibility,omitempty"`
-		AccessCode string        `json:"accessCode,omitempty"`
-	}{name, files, visibility, accessCode})
+		Name  string        `json:"name"`
+		Files []previewFile `json:"files"`
+		previewRepoMetadata
+		Visibility string `json:"visibility,omitempty"`
+		AccessCode string `json:"accessCode,omitempty"`
+	}{name, files, metadata, visibility, accessCode})
 	if err != nil {
 		return previewResult{}, err
 	}
@@ -326,7 +405,15 @@ func newPreviewCmd(o *rootOptions) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("build preview: %w", err)
 			}
-			result, err := createPreview(o, name, files, visibility, accessCode)
+			inputInfo, err := os.Stat(args[0])
+			if err != nil {
+				return fmt.Errorf("stat preview: %w", err)
+			}
+			metadataRoot := args[0]
+			if !inputInfo.IsDir() {
+				metadataRoot = filepath.Dir(args[0])
+			}
+			result, err := createPreview(o, name, files, collectPreviewRepoMetadata(metadataRoot), visibility, accessCode)
 			if err != nil {
 				return fmt.Errorf("create preview: %w", err)
 			}

@@ -6,6 +6,7 @@ declare global {
     readonly CLOUDFLARE_API_TOKEN?: string;
     readonly CLOUDFLARE_ZONE_ID?: string;
     readonly SESSION_SECRET?: string;
+    readonly AUTH_SECRET?: string;
     readonly AUTH_MODE?: string;
     readonly DEV_AUTH_SECRET?: string;
     readonly POSTHOG_API_KEY?: string;
@@ -20,6 +21,7 @@ declare global {
       readonly CLOUDFLARE_API_TOKEN?: string;
       readonly CLOUDFLARE_ZONE_ID?: string;
       readonly SESSION_SECRET?: string;
+      readonly AUTH_SECRET?: string;
       readonly AUTH_MODE?: string;
       readonly DEV_AUTH_SECRET?: string;
       readonly POSTHOG_API_KEY?: string;

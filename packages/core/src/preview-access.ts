@@ -1,10 +1,12 @@
 import { timingSafeSecretEqual } from "./agent-tokens.js";
+import { ACCESS_CODE_MINIMUM_LENGTH } from "./schemas.js";
 import type { PreviewVisibility } from "./schemas.js";
 
-export const ACCESS_CODE_MINIMUM_LENGTH = 4;
+export { ACCESS_CODE_MINIMUM_LENGTH };
 export const ACCESS_CODE_MAXIMUM_LENGTH = 128;
 
 const encoder = new TextEncoder();
+const hmacKeys = new Map<string, Promise<CryptoKey>>();
 
 export function isPreviewVisibility(value: unknown): value is PreviewVisibility {
   return value === "public" || value === "private" || value === "code";
@@ -22,32 +24,50 @@ function hex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+function hmacKey(secret: string): Promise<CryptoKey> {
+  const existing = hmacKeys.get(secret);
+  if (existing !== undefined) return existing;
+  const key = crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  hmacKeys.set(secret, key);
+  return key;
+}
+
+async function hmacHex(secret: string, bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.sign("HMAC", await hmacKey(secret), bytes);
   return hex(new Uint8Array(digest));
 }
 
-export async function hashAccessCode(code: string): Promise<string> {
+export async function hashAccessCode(code: string, secret: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const encoded = encoder.encode(code);
   const payload = new Uint8Array(salt.length + encoded.length);
   payload.set(salt);
   payload.set(encoded, salt.length);
-  return `${hex(salt)}:${await sha256Hex(payload)}`;
+  return `v2:${hex(salt)}:${await hmacHex(secret, payload)}`;
 }
 
-export async function verifyAccessCode(code: string, storedHash: string): Promise<boolean> {
-  const separator = storedHash.indexOf(":");
-  if (separator <= 0) return false;
-  const saltHex = storedHash.slice(0, separator);
-  const expected = storedHash.slice(separator + 1);
+export async function verifyAccessCode(
+  code: string,
+  storedHash: string,
+  secret: string,
+): Promise<boolean> {
+  const parts = storedHash.split(":");
+  if (parts.length !== 3 || parts[0] !== "v2") return false;
+  const saltHex = parts[1] ?? "";
+  const expected = parts[2] ?? "";
   if (saltHex.length % 2 !== 0 || !/^[a-f0-9]+$/u.test(saltHex)) return false;
   const salt = Uint8Array.from(saltHex.match(/../gu) ?? [], (pair) => Number.parseInt(pair, 16));
   const encoded = encoder.encode(code);
   const payload = new Uint8Array(salt.length + encoded.length);
   payload.set(salt);
   payload.set(encoded, salt.length);
-  return timingSafeSecretEqual(await sha256Hex(payload), expected);
+  return timingSafeSecretEqual(await hmacHex(secret, payload), expected);
 }
 
 export async function previewAccessCookieValue(

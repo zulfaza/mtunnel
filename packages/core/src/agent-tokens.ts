@@ -2,6 +2,7 @@ import { TOKEN_TTL_SECONDS } from "@tunnel/config";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const hmacKeys = new Map<string, Promise<CryptoKey>>();
 
 export interface AgentClaims {
   readonly sub: string;
@@ -48,14 +49,18 @@ function decodeBase64Url(value: string): Uint8Array | null {
   }
 }
 
-async function hmacKey(rootSecret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
+function hmacKey(rootSecret: string): Promise<CryptoKey> {
+  const existing = hmacKeys.get(rootSecret);
+  if (existing !== undefined) return existing;
+  const key = crypto.subtle.importKey(
     "raw",
     encoder.encode(rootSecret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign", "verify"],
   );
+  hmacKeys.set(rootSecret, key);
+  return key;
 }
 
 async function signature(value: string, rootSecret: string): Promise<Uint8Array> {

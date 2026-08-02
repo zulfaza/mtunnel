@@ -82,6 +82,7 @@ function runtimeFor(): CoreRuntime {
         ? {}
         : { cloudflareApiToken: env.CLOUDFLARE_API_TOKEN }),
       ...(env.CLOUDFLARE_ZONE_ID === undefined ? {} : { cloudflareZoneId: env.CLOUDFLARE_ZONE_ID }),
+      ...(env.AUTH_SECRET === undefined ? {} : { authSecret: env.AUTH_SECRET }),
       ...(env.AUTH_MODE === undefined ? {} : { authMode: env.AUTH_MODE }),
       ...(env.DEV_AUTH_SECRET === undefined ? {} : { devAuthSecret: env.DEV_AUTH_SECRET }),
       ...(env.POSTHOG_API_KEY === undefined ? {} : { posthogApiKey: env.POSTHOG_API_KEY }),

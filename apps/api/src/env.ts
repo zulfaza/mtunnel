@@ -7,6 +7,8 @@ export interface Env {
   readonly DOMAINS: D1Database;
   readonly PREVIEWS: R2Bucket;
   readonly AUTH_RATE_LIMITER: RateLimit;
+  readonly PREVIEW_RATE_LIMITER: RateLimit;
+  readonly API_RATE_LIMITER: RateLimit;
   readonly PROXY_RATE_LIMITER: RateLimit;
   readonly AUTH_SECRET?: string;
   readonly AUTH_MODE?: string;

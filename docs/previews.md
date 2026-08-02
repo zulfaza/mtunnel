@@ -20,7 +20,7 @@ https://preview.makarima.xyz/p7w3k9.../demo.mp4
 $ mt preview list                         # aliases: ls
 $ mt preview delete <id>                  # aliases: rm
 
-$ mt preview ./dist --visibility code --code letmein   # gate behind an access code
+$ mt preview ./dist --visibility code --code letmein-secure   # gate behind an access code
 $ mt preview visibility <id> private                   # change later
 ```
 
@@ -50,7 +50,7 @@ CREATE INDEX previews_expires_at ON previews(expires_at);
   are public-by-URL, no per-request auth on the serving side).
 - Migration `0006_preview_visibility.sql` adds `visibility TEXT NOT NULL
 DEFAULT 'public'` (`public` | `private` | `code`) and `access_code_hash TEXT`
-  (`<salt-hex>:<sha256-hex>`, set only for `code`).
+  (`v2:<salt-hex>:<hmac-hex>`, set only for `code`).
 
 ## API (new `apps/api/src/routes/(api)/previews.ts`, follows domains.ts)
 
@@ -59,7 +59,8 @@ via `limitsForOrganization` (extended, see Limits).
 
 - `POST /api/v1/previews` — body `{name, files: [{path, size, contentType,
 sha256}]}` plus optional `visibility` (`public` default | `private` | `code`)
-  and `accessCode` (required iff `visibility` is `code`, 4–128 chars).
+  and `accessCode` (required iff `visibility` is `code`, 12–128 chars). Access
+  codes are peppered with `AUTH_SECRET` before storage.
   Validates paths (reject absolute, `..`, backslashes, empty),
   per-file/per-preview/org-quota limits. Inserts the D1 row, returns
   `201 {id, url, expiresAt, visibility, ...}`.

@@ -10,10 +10,10 @@ import {
 } from "./errors.js";
 import { hashAccessCode, isAccessCode, isPreviewVisibility } from "./preview-access.js";
 import {
+  PreviewCreateRequest,
   PreviewFile,
   PreviewView,
   type OrganizationLimits,
-  type PreviewCreateRequest,
   type PreviewVisibility,
 } from "./schemas.js";
 
@@ -26,12 +26,15 @@ interface PreviewRow {
   readonly expires_at: number;
   readonly manifest: string;
   readonly visibility: string;
+  readonly repo_host: string | null;
+  readonly repo_org: string | null;
+  readonly repo_name: string | null;
 }
 
 interface PreviewCreateInput {
   readonly organizationId: string;
   readonly userId: string;
-  readonly request: PreviewCreateRequest;
+  readonly request: unknown;
 }
 
 interface PreviewIdentity {
@@ -55,6 +58,9 @@ const PreviewRowSchema = Schema.Struct({
   expires_at: Schema.Number,
   manifest: Schema.String,
   visibility: Schema.String,
+  repo_host: Schema.NullOr(Schema.String),
+  repo_org: Schema.NullOr(Schema.String),
+  repo_name: Schema.NullOr(Schema.String),
 });
 const PreviewUploadRowSchema = Schema.Struct({
   manifest: Schema.String,
@@ -63,8 +69,54 @@ const PreviewUploadRowSchema = Schema.Struct({
 const decodePreviewRow = Schema.decodeUnknownOption(PreviewRowSchema);
 const decodePreviewUploadRow = Schema.decodeUnknownOption(PreviewUploadRowSchema);
 const decodeManifest = Schema.decodeUnknownOption(Schema.Array(PreviewFile));
+const decodePreviewCreateRequest = Schema.decodeUnknownOption(PreviewCreateRequest);
 
-function previewId(): string {
+export async function putPreviewObject(
+  bucket: R2Bucket,
+  key: string,
+  body: ReadableStream<Uint8Array>,
+  size: number,
+  contentType: string,
+  sha256: string,
+): Promise<boolean> {
+  let bytes = 0;
+  let exceeded = false;
+  const countedBody = body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        bytes += chunk.byteLength;
+        const previousBytes = bytes - chunk.byteLength;
+        const remaining = Math.max(0, size - previousBytes);
+        if (remaining < chunk.byteLength) exceeded = true;
+        if (remaining > 0) controller.enqueue(chunk.slice(0, remaining));
+      },
+    }),
+  );
+  const fixedLength = new FixedLengthStream(size);
+  const transfer = countedBody.pipeTo(fixedLength.writable, {
+    preventAbort: true,
+    preventCancel: true,
+  });
+  try {
+    await bucket.put(key, fixedLength.readable, {
+      httpMetadata: { contentType },
+      sha256,
+    });
+    await transfer;
+  } catch (error: unknown) {
+    await transfer.catch(() => undefined);
+    if (exceeded || bytes !== size) {
+      await bucket.delete(key);
+      return false;
+    }
+    throw error;
+  }
+  if (bytes === size) return true;
+  await bucket.delete(key);
+  return false;
+}
+
+export function previewId(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   const alphabet = "abcdefghijklmnopqrstuvwxyz234567";
@@ -93,6 +145,9 @@ function response(row: PreviewRow, domain: string): PreviewView {
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     visibility: isPreviewVisibility(row.visibility) ? row.visibility : "public",
+    repoHost: row.repo_host,
+    repoOrg: row.repo_org,
+    repoName: row.repo_name,
   };
 }
 
@@ -171,28 +226,32 @@ export const previewsLayer = Layer.effect(
       if (!isPreviewVisibility(value)) return yield* Effect.fail(new BadRequestError({}));
       if (value === "code") {
         if (!isAccessCode(accessCode)) return yield* Effect.fail(new BadRequestError({}));
+        const authSecret = config.authSecret;
+        if (authSecret === undefined) return yield* Effect.fail(new BadRequestError({}));
         return {
           visibility: value,
-          accessCodeHash: yield* Effect.promise(() => hashAccessCode(accessCode)),
+          accessCodeHash: yield* Effect.promise(() => hashAccessCode(accessCode, authSecret)),
         };
       }
       if (accessCode !== undefined) return yield* Effect.fail(new BadRequestError({}));
       return { visibility: value, accessCodeHash: null };
     });
     const create = Effect.fn("previews.create")(function* (input: PreviewCreateInput) {
-      const visibility = yield* visibilityHash(input.request.visibility, input.request.accessCode);
+      const decodedRequest = decodePreviewCreateRequest(input.request);
+      if (decodedRequest._tag === "None") return yield* Effect.fail(new BadRequestError({}));
+      const request = decodedRequest.value;
+      const visibility = yield* visibilityHash(request.visibility, request.accessCode);
       const limits = limitsWithOverrides(
         yield* access.limitsForOrganization(input.organizationId),
         config,
       );
-      const paths = new Set(input.request.files.map((file) => file.path));
-      const totalBytes = input.request.files.reduce((total, file) => total + file.size, 0);
+      const paths = new Set(request.files.map((file) => file.path));
+      const totalBytes = request.files.reduce((total, file) => total + file.size, 0);
       if (
         !Number.isSafeInteger(totalBytes) ||
-        input.request.files.some((file) => file.size > limits.maximumPreviewFileBytes) ||
-        paths.size !== input.request.files.length ||
-        (limits.maximumPreviewFiles !== null &&
-          input.request.files.length > limits.maximumPreviewFiles)
+        request.files.some((file) => file.size > limits.maximumPreviewFileBytes) ||
+        paths.size !== request.files.length ||
+        (limits.maximumPreviewFiles !== null && request.files.length > limits.maximumPreviewFiles)
       )
         return yield* Effect.fail(new PreviewLimitError({}));
       const current = yield* Effect.promise(() =>
@@ -212,18 +271,21 @@ export const previewsLayer = Layer.effect(
       const now = Date.now();
       const row: PreviewRow = {
         id: previewId(),
-        name: input.request.name,
-        manifest: JSON.stringify(input.request.files),
+        name: request.name,
+        manifest: JSON.stringify(request.files),
         total_bytes: totalBytes,
-        file_count: input.request.files.length,
+        file_count: request.files.length,
         created_at: now,
         expires_at: now + limits.previewTTLSeconds * 1000,
         visibility: visibility.visibility,
+        repo_host: request.repoHost ?? null,
+        repo_org: request.repoOrg ?? null,
+        repo_name: request.repoName ?? null,
       };
       yield* Effect.promise(() =>
         database
           .prepare(
-            "INSERT INTO previews (id, organization_id, user_id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO previews (id, organization_id, user_id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           )
           .bind(
             row.id,
@@ -237,6 +299,9 @@ export const previewsLayer = Layer.effect(
             row.expires_at,
             row.visibility,
             visibility.accessCodeHash,
+            row.repo_host,
+            row.repo_org,
+            row.repo_name,
           )
           .run(),
       );
@@ -252,7 +317,7 @@ export const previewsLayer = Layer.effect(
       const value = yield* Effect.promise(() =>
         database
           .prepare(
-            "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ? RETURNING id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility",
+            "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ? RETURNING id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name",
           )
           .bind(
             visibility.visibility,
@@ -284,18 +349,23 @@ export const previewsLayer = Layer.effect(
       const file = files.find((entry) => entry.path === input.path);
       if (file === undefined || input.contentLength !== String(file.size))
         return yield* Effect.fail(new BadRequestError({}));
-      yield* Effect.promise(() =>
-        bucket.put(`${input.id}/${input.path}`, input.body, {
-          httpMetadata: { contentType: file.contentType },
-          sha256: file.sha256,
-        }),
+      const exactSize = yield* Effect.promise(() =>
+        putPreviewObject(
+          bucket,
+          `${input.id}/${input.path}`,
+          input.body,
+          file.size,
+          file.contentType,
+          file.sha256,
+        ),
       );
+      if (!exactSize) return yield* Effect.fail(new BadRequestError({}));
     });
     const list = Effect.fn("previews.list")(function* (organizationId: string) {
       const result = yield* Effect.promise(() =>
         database
           .prepare(
-            "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
+            "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
           )
           .bind(organizationId, Date.now())
           .all(),
@@ -309,7 +379,7 @@ export const previewsLayer = Layer.effect(
       const value = yield* Effect.promise(() =>
         database
           .prepare(
-            "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
+            "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
           )
           .bind(input.id, input.organizationId, input.userId)
           .first(),

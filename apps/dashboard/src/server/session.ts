@@ -8,13 +8,18 @@ import { runCore } from "./runtime.js";
 const SESSION_COOKIE = "mt_session";
 const STATE_COOKIE = "mt_login_state";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+const SESSION_VERSION = "v1";
 
 export interface DashboardSession {
   readonly accessToken: string;
   readonly refreshToken: string;
   readonly email: string;
   readonly organizationId?: string;
+  readonly issuedAt: number;
+  readonly expiresAt: number;
 }
+
+type SessionCredentials = Omit<DashboardSession, "issuedAt" | "expiresAt">;
 
 export interface DashboardUser {
   readonly userId: string;
@@ -56,6 +61,21 @@ function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> | null {
   }
 }
 
+const encryptionKeys = new Map<string, Promise<CryptoKey>>();
+
+function sessionKey(): Promise<CryptoKey> {
+  const secret = sessionSecret();
+  const existing = encryptionKeys.get(secret);
+  if (existing !== undefined) return existing;
+  const key = crypto.subtle
+    .digest("SHA-256", utf8(secret))
+    .then((digest) =>
+      crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]),
+    );
+  encryptionKeys.set(secret, key);
+  return key;
+}
+
 function sessionSecret(): string {
   const secret = env.SESSION_SECRET;
   if (secret === undefined || secret.length < 32)
@@ -70,43 +90,48 @@ function sessionValue(value: unknown): DashboardSession | null {
   const email = typeof value.email === "string" ? value.email : null;
   if (accessToken === null || refreshToken === null || email === null) return null;
   const organizationId = nonEmptyString(value.organizationId);
+  const issuedAt = value.issuedAt;
+  const expiresAt = value.expiresAt;
+  const now = Date.now();
+  if (
+    typeof issuedAt !== "number" ||
+    !Number.isSafeInteger(issuedAt) ||
+    issuedAt > now ||
+    typeof expiresAt !== "number" ||
+    !Number.isSafeInteger(expiresAt) ||
+    expiresAt <= now ||
+    expiresAt <= issuedAt
+  )
+    return null;
   return organizationId === null
-    ? { accessToken, refreshToken, email }
-    : { accessToken, refreshToken, email, organizationId };
+    ? { accessToken, refreshToken, email, issuedAt, expiresAt }
+    : { accessToken, refreshToken, email, organizationId, issuedAt, expiresAt };
 }
 
-async function signedValue(session: DashboardSession): Promise<string> {
-  const payload = base64Url(utf8(JSON.stringify(session)));
-  const key = await crypto.subtle.importKey(
-    "raw",
-    utf8(sessionSecret()),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
+async function encryptedValue(session: DashboardSession): Promise<string> {
+  const iv = new Uint8Array(new ArrayBuffer(12));
+  crypto.getRandomValues(iv);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    await sessionKey(),
+    utf8(JSON.stringify(session)),
   );
-  const signature = await crypto.subtle.sign("HMAC", key, utf8(payload));
-  return `${payload}.${base64Url(new Uint8Array(signature))}`;
+  return `${SESSION_VERSION}.${base64Url(iv)}.${base64Url(new Uint8Array(ciphertext))}`;
 }
 
 async function verifyValue(value: string): Promise<DashboardSession | null> {
-  const separator = value.indexOf(".");
-  if (separator <= 0) return null;
-  const payload = value.slice(0, separator);
-  const encodedSignature = value.slice(separator + 1);
-  const signature = decodeBase64Url(encodedSignature);
-  const bytes = decodeBase64Url(payload);
-  if (signature === null || bytes === null) return null;
-  const key = await crypto.subtle.importKey(
-    "raw",
-    utf8(sessionSecret()),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["verify"],
-  );
-  const valid = await crypto.subtle.verify("HMAC", key, signature, utf8(payload));
-  if (!valid) return null;
+  const parts = value.split(".");
+  if (parts.length !== 3 || parts[0] !== SESSION_VERSION) return null;
+  const iv = decodeBase64Url(parts[1] ?? "");
+  const ciphertext = decodeBase64Url(parts[2] ?? "");
+  if (iv === null || ciphertext === null || iv.byteLength !== 12) return null;
   try {
-    return sessionValue(JSON.parse(new TextDecoder().decode(bytes)));
+    const plaintext = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      await sessionKey(),
+      ciphertext,
+    );
+    return sessionValue(JSON.parse(new TextDecoder().decode(plaintext)));
   } catch {
     return null;
   }
@@ -117,8 +142,9 @@ export async function readSession(): Promise<DashboardSession | null> {
   return value === undefined ? null : verifyValue(value);
 }
 
-export async function writeSession(session: DashboardSession): Promise<void> {
-  setCookie(SESSION_COOKIE, await signedValue(session), {
+export async function writeSession(session: SessionCredentials): Promise<void> {
+  const persisted = sessionWithLifetime(session);
+  setCookie(SESSION_COOKIE, await encryptedValue(persisted), {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
@@ -127,12 +153,21 @@ export async function writeSession(session: DashboardSession): Promise<void> {
   });
 }
 
+export function sessionWithLifetime(session: SessionCredentials): DashboardSession {
+  const issuedAt = Date.now();
+  return {
+    ...session,
+    issuedAt,
+    expiresAt: issuedAt + COOKIE_MAX_AGE * 1000,
+  };
+}
+
 export function clearSession(): void {
   deleteCookie(SESSION_COOKIE, { httpOnly: true, secure: true, sameSite: "lax", path: "/" });
 }
 
-export function writeLoginState(state: string): void {
-  setCookie(STATE_COOKIE, state, {
+export function writeLoginState(state: string, codeVerifier: string): void {
+  setCookie(STATE_COOKIE, `${state}.${codeVerifier}`, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
@@ -141,13 +176,17 @@ export function writeLoginState(state: string): void {
   });
 }
 
-export function takeLoginState(): string | null {
+export function takeLoginState(): { readonly state: string; readonly codeVerifier: string } | null {
   const state = getCookie(STATE_COOKIE);
   deleteCookie(STATE_COOKIE, { httpOnly: true, secure: true, sameSite: "lax", path: "/" });
-  return state ?? null;
+  if (state === undefined) return null;
+  const parts = state.split(".");
+  return parts.length === 2 && parts[0] !== "" && parts[1] !== ""
+    ? { state: parts[0] ?? "", codeVerifier: parts[1] ?? "" }
+    : null;
 }
 
-function workosSession(value: unknown): DashboardSession | null {
+function workosSession(value: unknown): SessionCredentials | null {
   if (!isRecord(value)) return null;
   const accessToken = nonEmptyString(value.access_token);
   const refreshToken = nonEmptyString(value.refresh_token);
@@ -190,9 +229,10 @@ async function authenticatedSession(session: DashboardSession): Promise<Dashboar
       session.organizationId === undefined
         ? nextSession
         : { ...nextSession, organizationId: session.organizationId };
-    await writeSession(withOrganization);
-    const user = await authenticate(withOrganization);
-    return { ...user, session: withOrganization };
+    const persisted = sessionWithLifetime(withOrganization);
+    await writeSession(persisted);
+    const user = await authenticate(persisted);
+    return { ...user, session: persisted };
   }
 }
 

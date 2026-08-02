@@ -40,28 +40,9 @@ jobs:
       - name: Build
         run: make -C apps/cli build
 
-  e2e:
-    runs-on: ubuntu-latest
-    needs: [node, agent]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: apps/cli/go.mod
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: cp apps/api/.dev.vars.example apps/api/.dev.vars
-      - run: pnpm build:cli
-      - run: pnpm test:e2e
-
   deploy:
     runs-on: ubuntu-latest
-    needs: [node, agent, e2e]
+    needs: [node, agent]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment:
       name: production

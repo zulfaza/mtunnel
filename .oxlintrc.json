@@ -9,7 +9,24 @@
   "rules": {
     "typescript/no-explicit-any": "error",
     "eqeqeq": "error",
-    "no-console": "off"
+    "no-console": "off",
+    "no-underscore-dangle": "off",
+    "no-await-in-loop": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/consistent-function-scoping": "off"
   },
-  "ignorePatterns": ["dist/**", "node_modules/**", ".turbo/**", ".wrangler/**", "bin/**"]
+  "options": {
+    "typeAware": false,
+    "typeCheck": false
+  },
+  "ignorePatterns": [
+    "dist/**",
+    "node_modules/**",
+    ".turbo/**",
+    ".wrangler/**",
+    "bin/**",
+    "pnpm-lock.yaml",
+    "*.tsbuildinfo",
+    "**/routeTree.gen.ts"
+  ]
 }

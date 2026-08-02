@@ -29,4 +29,18 @@ describe("auth proxy rate limiting", () => {
     });
     expect(response.status).toBe(429);
   });
+
+  it("limits authenticated API calls per user and organization", async () => {
+    const limits = await Promise.all(
+      Array.from({ length: 60 }, () =>
+        env.API_RATE_LIMITER.limit({ key: "development-user:development-organization" }),
+      ),
+    );
+    expect(limits.every(({ success }) => success)).toBe(true);
+
+    const response = await SELF.fetch("http://worker.test/api/v1/previews", {
+      headers: { authorization: "Bearer development-token" },
+    });
+    expect(response.status).toBe(429);
+  });
 });
