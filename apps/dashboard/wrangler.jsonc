@@ -4,7 +4,12 @@
   "main": "@tanstack/react-start/server-entry",
   "compatibility_date": "2026-07-31",
   "compatibility_flags": ["nodejs_compat"],
-  "routes": [{ "pattern": "app.makarima.xyz", "custom_domain": true }],
+  "routes": [
+    {
+      "pattern": "app.makarima.xyz/*",
+      "zone_id": "3a5b618dd10571f2c8b61df91aca11ee",
+    },
+  ],
   "durable_objects": {
     "bindings": [
       { "name": "TUNNELS", "class_name": "TunnelDO", "script_name": "mtunnel-api" },
