@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { MAX_FRAME_PAYLOAD_BYTES, chunkPayload } from "../src/index.js";
 
 describe("chunkPayload", () => {

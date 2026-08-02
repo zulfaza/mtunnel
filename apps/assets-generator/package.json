@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
+    "dev": "vp dev",
+    "build": "vp build",
     "generate": "node scripts/generate.mjs",
-    "lint": "oxlint",
+    "lint": "vp lint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vp test run --passWithNoTests"
   },
   "dependencies": {
     "@tunnel/assets": "workspace:*",
@@ -22,7 +22,8 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "typescript": "^5",
-    "vite": "^8.2.0",
-    "vitest": "^4.1.0"
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
   }
 }

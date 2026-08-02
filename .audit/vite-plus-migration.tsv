@@ -1,2 +1,4 @@
 ts	phase	decision	why	evidence	result
 2026-08-02T05:18:07Z	baseline	preserved existing worktree as a separate commit	migration should not mix with unrelated feature changes	git status --short; git diff --stat	open
+2026-08-02T05:23:28Z	migration	replaced Turbo root orchestration with Vite+ workspace commands	keep Wrangler, SvelteKit, TanStack Start, and Go workflows intact	package.json; vite.config.ts; turbo.json; .github/workflows/ci.yml	format/lint/build/typecheck/test pass
+2026-08-02T05:23:28Z	validation	validated package-scoped Worker tests instead of root vp test	root vp test bypasses Cloudflare Worker config; package scripts preserve it	apps/api/vitest.config.ts; pnpm test	16 workspace tasks pass; API 43 tests pass

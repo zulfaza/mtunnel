@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import fixturesJson from "../fixtures/frames.json" with { type: "json" };
 import {
   type Message,

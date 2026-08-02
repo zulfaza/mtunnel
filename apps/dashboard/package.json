@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "lint": "oxlint",
+    "dev": "vp dev",
+    "build": "vp build",
+    "lint": "vp lint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "test": "vp test run --config vitest.config.ts --passWithNoTests",
     "deploy": "pnpm run build && wrangler deploy"
   },
   "dependencies": {
@@ -39,8 +39,9 @@
     "@vitejs/plugin-react": "^6.0.5",
     "tailwindcss": "^4.3.3",
     "typescript": "^5",
-    "vite": "^8.2.0",
-    "vitest": "^4.1.0",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:",
     "wrangler": "^4.116.0"
   }
 }

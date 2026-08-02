@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { addDomain } from "../src/domains.js";
 
 const PENDING_DOMAIN_TTL_MS = 72 * 60 * 60 * 1000;

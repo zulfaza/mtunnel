@@ -8,9 +8,9 @@
     "build": "wrangler deploy --dry-run --outdir=dist",
     "migrate:remote": "wrangler d1 migrations apply DOMAINS --remote",
     "deploy": "pnpm run migrate:remote && wrangler deploy",
-    "lint": "oxlint",
+    "lint": "vp lint",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --config vitest.config.ts --passWithNoTests"
+    "test": "vp test run --config vitest.config.ts --passWithNoTests"
   },
   "dependencies": {
     "@tunnel/config": "workspace:*",
@@ -24,7 +24,9 @@
     "@cloudflare/workers-types": "^5",
     "@tunnel/tsconfig": "workspace:*",
     "typescript": "^5",
-    "vitest": "^4.1.0",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:",
     "wrangler": "^4"
   }
 }

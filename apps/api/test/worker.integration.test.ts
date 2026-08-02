@@ -5,7 +5,7 @@ import {
   type Message,
   type RequestStartMessage,
 } from "@tunnel/protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 interface FakeAgent {
   readonly ws: WebSocket;

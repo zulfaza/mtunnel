@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { limitsForOrganization } from "../src/access.js";
 
 describe("organization access", () => {

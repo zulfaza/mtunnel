@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { capture } from "../src/analytics.js";
 import type { Env } from "../src/env.js";
 

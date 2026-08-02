@@ -1,5 +1,5 @@
 import { applyD1Migrations, env } from "cloudflare:test";
-import { beforeAll } from "vitest";
+import { beforeAll } from "vite-plus/test";
 
 beforeAll(async () => {
   await applyD1Migrations(env.DOMAINS, env.TEST_MIGRATIONS);

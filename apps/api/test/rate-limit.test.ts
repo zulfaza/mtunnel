@@ -1,5 +1,5 @@
 import { env, SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 describe("auth proxy rate limiting", () => {
   it("returns 429 once the per-IP auth rate limit is exhausted", async () => {

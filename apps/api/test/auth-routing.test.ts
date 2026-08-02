@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { mintAgentToken, mintSignedToken, verifyAgentToken } from "../src/auth/index.js";
 import { tunnelIdFromDevPath, tunnelIdFromHost } from "../src/routing/index.js";
 

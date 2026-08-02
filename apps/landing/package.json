@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "lint": "oxlint",
+    "dev": "vp dev",
+    "build": "vp build",
+    "lint": "vp lint",
     "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test": "vitest run --passWithNoTests",
+    "test": "vp test run --passWithNoTests",
     "deploy": "pnpm run build && wrangler deploy"
   },
   "dependencies": {
@@ -23,8 +23,9 @@
     "svelte": "^5.56.8",
     "svelte-check": "^4.3.4",
     "typescript": "^5",
-    "vite": "^8.2.0",
-    "vitest": "^4.1.0",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:",
     "wrangler": "^4"
   }
 }

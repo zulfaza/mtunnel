@@ -4,8 +4,21 @@ packages:
 
 catalog:
   effect: 4.0.0-beta.102
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.7
+  vitest: 4.1.10
+  vite-plus: 0.2.7
 
 onlyBuiltDependencies:
   - esbuild
   - sharp
   - workerd
+overrides:
+  vite: "catalog:"
+  vitest: "catalog:"
+peerDependencyRules:
+  allowAny:
+    - vite
+    - vitest
+  allowedVersions:
+    vite: "*"
+    vitest: "*"

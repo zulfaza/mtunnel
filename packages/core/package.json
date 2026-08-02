@@ -21,9 +21,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "lint": "oxlint",
+    "lint": "vp lint",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vp test run --passWithNoTests"
   },
   "dependencies": {
     "@tunnel/config": "workspace:*",
@@ -34,6 +34,7 @@
     "@cloudflare/workers-types": "^5",
     "@tunnel/tsconfig": "workspace:*",
     "typescript": "^5",
-    "vitest": "^3"
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
   }
 }

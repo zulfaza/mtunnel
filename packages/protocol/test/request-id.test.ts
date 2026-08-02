@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { hexToRequestId, newRequestId, requestIdEquals, requestIdToHex } from "../src/index.js";
 
 describe("request id helpers", () => {

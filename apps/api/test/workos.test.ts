@@ -1,5 +1,5 @@
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { verifyWorkosAccessToken } from "../src/auth/workos.js";
 
 async function signedAccessToken(claims: {
