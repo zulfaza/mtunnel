@@ -53,6 +53,7 @@
       "database_name": "mtunnel-domains",
       "database_id": "d73b0447-a7ec-47c8-a804-30578f053b7c",
       "migrations_dir": "migrations",
+      "remote": true,
     },
   ],
   "r2_buckets": [
