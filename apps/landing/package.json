@@ -9,7 +9,7 @@
     "lint": "vp lint",
     "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vp test run --passWithNoTests",
-    "deploy": "pnpm run build && wrangler deploy"
+    "deploy": "vp run build && wrangler deploy"
   },
   "dependencies": {
     "@tunnel/assets": "workspace:*"
