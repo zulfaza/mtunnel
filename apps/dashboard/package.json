@@ -9,7 +9,7 @@
     "lint": "vp lint",
     "typecheck": "tsc --noEmit",
     "test": "vp test run --config vitest.config.ts --passWithNoTests",
-    "deploy": "pnpm run build && wrangler deploy"
+    "deploy": "vp run build && wrangler deploy"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
