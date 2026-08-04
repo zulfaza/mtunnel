@@ -32,6 +32,11 @@ type rootOptions struct {
 	logger         *slog.Logger
 }
 
+const (
+	productionServer       = "https://api.makarima.xyz"
+	legacyProductionServer = "https://makarima.xyz"
+)
+
 func newRootCmd() *cobra.Command {
 	o := &rootOptions{config: config.DefaultPath()}
 	cmd := &cobra.Command{
@@ -159,6 +164,9 @@ func (o *rootOptions) loadConfig() (config.Config, error) {
 			return config.Config{}, err
 		}
 		cfg = config.Config{}
+	}
+	if cfg.Server == legacyProductionServer {
+		cfg.Server = productionServer
 	}
 	if o.server != "" {
 		cfg.Server = o.server

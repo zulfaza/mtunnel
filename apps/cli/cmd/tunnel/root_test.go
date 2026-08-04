@@ -83,6 +83,36 @@ func TestExplicitTokenDisablesStoredRefreshToken(t *testing.T) {
 	}
 }
 
+func TestLoadConfigMigratesLegacyProductionServer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := config.Save(path, config.Config{Server: legacyProductionServer}); err != nil {
+		t.Fatal(err)
+	}
+	o := rootOptions{config: path}
+	cfg, err := o.loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server != productionServer {
+		t.Fatalf("server = %q, want %q", cfg.Server, productionServer)
+	}
+}
+
+func TestExplicitServerOverridesLegacyMigration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := config.Save(path, config.Config{Server: legacyProductionServer}); err != nil {
+		t.Fatal(err)
+	}
+	o := rootOptions{config: path, server: legacyProductionServer}
+	cfg, err := o.loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server != legacyProductionServer {
+		t.Fatalf("server = %q, want explicit %q", cfg.Server, legacyProductionServer)
+	}
+}
+
 func TestCommandName(t *testing.T) {
 	if name := newRootCmd().Name(); name != "mt" {
 		t.Fatalf("command name = %q, want mt", name)
