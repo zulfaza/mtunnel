@@ -15,7 +15,7 @@ func newLoginCmd(o *rootOptions) *cobra.Command {
 	return &cobra.Command{Use: "login", Short: "Sign in with Google through WorkOS", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		server := strings.TrimRight(strings.TrimSpace(o.server), "/")
 		if server == "" {
-			server = "https://makarima.xyz"
+			server = productionServer
 		}
 		device, err := auth.StartDeviceLogin(context.Background(), http.DefaultClient, server)
 		if err != nil {
