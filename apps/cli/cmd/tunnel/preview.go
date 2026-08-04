@@ -420,11 +420,7 @@ func newPreviewCmd(o *rootOptions) *cobra.Command {
 			if err = uploadPreview(o, result.ID, files); err != nil {
 				return fmt.Errorf("upload preview: %w", err)
 			}
-			outputURL, err := previewOutputURL(result.URL, files)
-			if err != nil {
-				return err
-			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), outputURL)
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), result.URL)
 			return err
 		},
 	}

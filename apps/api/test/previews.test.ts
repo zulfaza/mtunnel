@@ -38,6 +38,41 @@ async function createPreview(): Promise<CreatedPreview> {
 }
 
 describe("previews", () => {
+  it("reuses a preview for the same repository and name", async () => {
+    const body = {
+      name: "site.html",
+      repoHost: "github.com",
+      repoOrg: "acme",
+      repoName: "site",
+      files: [
+        {
+          path: "site.html",
+          size: 5,
+          contentType: "text/html",
+          sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        },
+      ],
+    };
+    const create = async () =>
+      SELF.fetch("http://worker.test/api/v1/previews", {
+        method: "POST",
+        headers: { authorization: "Bearer development-token", "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const first = await create();
+    const firstValue = (await first.json()) as { id: string; url: string };
+    const second = await create();
+    const secondValue = (await second.json()) as { id: string; url: string };
+    expect(secondValue.id).toBe(firstValue.id);
+    expect(secondValue.url).toBe(`https://preview.worker.test/${firstValue.id}/site.html`);
+  });
+
+  it("redirects preview roots to the dashboard", async () => {
+    const response = await SELF.fetch("http://preview.worker.test/", { redirect: "manual" });
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("https://app.worker.test/");
+  });
+
   it("uploads, serves ranges, and deletes a preview", async () => {
     const preview = await createPreview();
     const upload = await SELF.fetch(
@@ -91,16 +126,16 @@ describe("previews", () => {
       headers: { authorization: "Bearer development-token", "content-length": "5" },
       body: "hello",
     });
-    const gated = await SELF.fetch(`http://preview.worker.test/${preview.id}/`);
+    const gated = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`);
     expect(gated.status).toBe(401);
     expect(await gated.text()).toContain("Access code required");
-    const rejected = await SELF.fetch(`http://preview.worker.test/${preview.id}/`, {
+    const rejected = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: "code=wrong-code",
     });
     expect(rejected.status).toBe(401);
-    const unlocked = await SELF.fetch(`http://preview.worker.test/${preview.id}/`, {
+    const unlocked = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: "code=open-sesame%21",
@@ -126,7 +161,7 @@ describe("previews", () => {
     });
     expect(updated.status).toBe(200);
     expect(((await updated.json()) as { visibility: string }).visibility).toBe("private");
-    const blocked = await SELF.fetch(`http://preview.worker.test/${preview.id}/`);
+    const blocked = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`);
     expect(blocked.status).toBe(403);
     const invalid = await SELF.fetch(`http://worker.test/api/v1/previews/${preview.id}`, {
       method: "PATCH",

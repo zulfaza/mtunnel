@@ -136,10 +136,16 @@ export function previewId(): string {
 }
 
 function response(row: PreviewRow, domain: string): PreviewView {
+  const files = parseManifest(row.manifest);
+  const filePath = files?.length === 1 ? files[0]?.path : undefined;
+  const urlPath =
+    filePath === undefined
+      ? `${row.id}/`
+      : `${row.id}/${filePath.split("/").map(encodeURIComponent).join("/")}`;
   return {
     id: row.id,
     name: row.name,
-    url: `https://${domain}/${row.id}/`,
+    url: `https://${domain}/${urlPath}`,
     totalBytes: row.total_bytes,
     fileCount: row.file_count,
     createdAt: row.created_at,
@@ -254,14 +260,42 @@ export const previewsLayer = Layer.effect(
         (limits.maximumPreviewFiles !== null && request.files.length > limits.maximumPreviewFiles)
       )
         return yield* Effect.fail(new PreviewLimitError({}));
-      const current = yield* Effect.promise(() =>
-        database
-          .prepare(
-            "SELECT COUNT(*) AS count, COALESCE(SUM(total_bytes), 0) AS total FROM previews WHERE organization_id = ? AND expires_at > ?",
-          )
-          .bind(input.organizationId, Date.now())
-          .first<{ count: number; total: number }>(),
-      );
+      const replacement =
+        request.repoOrg !== undefined &&
+        request.repoOrg !== null &&
+        request.repoName !== undefined &&
+        request.repoName !== null
+          ? yield* Effect.promise(() =>
+              database
+                .prepare(
+                  "SELECT id FROM previews WHERE organization_id = ? AND name = ? AND repo_host IS ? AND repo_org = ? AND repo_name = ? AND expires_at > ?",
+                )
+                .bind(
+                  input.organizationId,
+                  request.name,
+                  request.repoHost ?? null,
+                  request.repoOrg,
+                  request.repoName,
+                  Date.now(),
+                )
+                .first<{ id: string }>(),
+            )
+          : null;
+      const current = yield* Effect.promise(() => {
+        const query =
+          replacement === null
+            ? database
+                .prepare(
+                  "SELECT COUNT(*) AS count, COALESCE(SUM(total_bytes), 0) AS total FROM previews WHERE organization_id = ? AND expires_at > ?",
+                )
+                .bind(input.organizationId, Date.now())
+            : database
+                .prepare(
+                  "SELECT COUNT(*) AS count, COALESCE(SUM(total_bytes), 0) AS total FROM previews WHERE organization_id = ? AND expires_at > ? AND id != ?",
+                )
+                .bind(input.organizationId, Date.now(), replacement.id);
+        return query.first<{ count: number; total: number }>();
+      });
       if (
         (limits.maximumPreviews !== null && (current?.count ?? 0) >= limits.maximumPreviews) ||
         (limits.maximumPreviewBytes !== null &&
@@ -282,29 +316,51 @@ export const previewsLayer = Layer.effect(
         repo_org: request.repoOrg ?? null,
         repo_name: request.repoName ?? null,
       };
+      const replacing = replacement !== null;
       yield* Effect.promise(() =>
-        database
-          .prepare(
-            "INSERT INTO previews (id, organization_id, user_id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          )
-          .bind(
-            row.id,
-            input.organizationId,
-            input.userId,
-            row.name,
-            row.manifest,
-            row.total_bytes,
-            row.file_count,
-            row.created_at,
-            row.expires_at,
-            row.visibility,
-            visibility.accessCodeHash,
-            row.repo_host,
-            row.repo_org,
-            row.repo_name,
-          )
-          .run(),
+        replacing
+          ? database
+              .prepare(
+                "UPDATE previews SET user_id = ?, manifest = ?, total_bytes = ?, file_count = ?, created_at = ?, expires_at = ?, visibility = ?, access_code_hash = ? WHERE id = ?",
+              )
+              .bind(
+                input.userId,
+                row.manifest,
+                row.total_bytes,
+                row.file_count,
+                row.created_at,
+                row.expires_at,
+                row.visibility,
+                visibility.accessCodeHash,
+                replacement.id,
+              )
+              .run()
+          : database
+              .prepare(
+                "INSERT INTO previews (id, organization_id, user_id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              )
+              .bind(
+                row.id,
+                input.organizationId,
+                input.userId,
+                row.name,
+                row.manifest,
+                row.total_bytes,
+                row.file_count,
+                row.created_at,
+                row.expires_at,
+                row.visibility,
+                visibility.accessCodeHash,
+                row.repo_host,
+                row.repo_org,
+                row.repo_name,
+              )
+              .run(),
       );
+      if (replacing) {
+        yield* deletePrefix(replacement.id);
+        return response({ ...row, id: replacement.id }, config.previewDomain);
+      }
       return response(row, config.previewDomain);
     });
     const update = Effect.fn("previews.update")(function* (

@@ -93,10 +93,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function previewResponse(row: PreviewRow, domain: string): Record<string, string | number | null> {
+  let filePath: string | undefined;
+  try {
+    const files: unknown = JSON.parse(row.manifest);
+    if (Array.isArray(files) && files.length === 1 && validFile(files[0])) filePath = files[0].path;
+  } catch {
+    filePath = undefined;
+  }
+  const urlPath =
+    filePath === undefined
+      ? `${row.id}/`
+      : `${row.id}/${filePath.split("/").map(encodeURIComponent).join("/")}`;
   return {
     id: row.id,
     name: row.name,
-    url: `https://${domain}/${row.id}/`,
+    url: `https://${domain}/${urlPath}`,
     totalBytes: row.total_bytes,
     fileCount: row.file_count,
     createdAt: row.created_at,
@@ -185,6 +196,33 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     repo_org: optionalText(body, "repoOrg"),
     repo_name: optionalText(body, "repoName"),
   };
+  const existing =
+    row.repo_org !== null && row.repo_name !== null
+      ? await env.DOMAINS.prepare(
+          "SELECT id FROM previews WHERE organization_id = ? AND name = ? AND repo_host IS ? AND repo_org = ? AND repo_name = ? AND expires_at > ?",
+        )
+          .bind(auth.organizationId, row.name, row.repo_host, row.repo_org, row.repo_name, now)
+          .first<{ id: string }>()
+      : null;
+  if (existing !== null) {
+    await deletePrefix(env, existing.id);
+    await env.DOMAINS.prepare(
+      "UPDATE previews SET user_id = ?, manifest = ?, total_bytes = ?, file_count = ?, created_at = ?, expires_at = ?, visibility = ?, access_code_hash = ? WHERE id = ?",
+    )
+      .bind(
+        auth.userId,
+        row.manifest,
+        row.total_bytes,
+        row.file_count,
+        row.created_at,
+        row.expires_at,
+        row.visibility,
+        visibilityInput.accessCodeHash,
+        existing.id,
+      )
+      .run();
+    return jsonResponse(previewResponse({ ...row, id: existing.id }, env.PREVIEW_DOMAIN));
+  }
   await env.DOMAINS.prepare(
     "INSERT INTO previews (id, organization_id, user_id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   )

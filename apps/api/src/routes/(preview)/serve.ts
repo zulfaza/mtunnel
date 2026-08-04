@@ -9,14 +9,6 @@ import {
 import { errorPage, previewCodePage } from "../(web)/pages.js";
 import { siteNotFound } from "../(web)/site.js";
 
-const HTML_ESCAPES: Readonly<Record<string, string>> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
 function headers(contentType: string | undefined, etag: string, cacheControl: string): Headers {
   const output = new Headers({
     "x-content-type-options": "nosniff",
@@ -40,28 +32,6 @@ function requestedRange(value: string | null): R2Range | undefined {
   )
     return undefined;
   return end === undefined ? { offset } : { offset, length: end - offset + 1 };
-}
-
-function escapeHTML(value: string): string {
-  return value.replace(/[&<>"']/gu, (character) => HTML_ESCAPES[character] ?? character);
-}
-
-async function listing(env: Env, id: string, cacheControl: string): Promise<Response> {
-  const listed = await env.PREVIEWS.list({ prefix: `${id}/` });
-  const entries = listed.objects.map((object) => object.key.slice(id.length + 1)).sort();
-  const items = entries
-    .map((entry) => `<li><a href="${encodeURI(entry)}">${escapeHTML(entry)}</a></li>`)
-    .join("");
-  return new Response(
-    `<!doctype html><meta charset="utf-8"><title>Preview files</title><h1>Preview files</h1><ul>${items}</ul>`,
-    {
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "x-content-type-options": "nosniff",
-        "cache-control": cacheControl,
-      },
-    },
-  );
 }
 
 interface PreviewAccessRow {
@@ -122,8 +92,12 @@ async function hasCodeAccess(
 export async function servePreview(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD" && request.method !== "POST")
     return siteNotFound();
+  if (url.pathname === "/" || url.pathname === "")
+    return Response.redirect(`https://app.${env.TUNNEL_DOMAIN}/`, 302);
   const match = /^\/([a-z2-7]{26})(?:\/(.*))?$/u.exec(url.pathname);
   if (match?.[1] === undefined) return siteNotFound();
+  if (match[2] === undefined || match[2] === "")
+    return Response.redirect(`https://app.${env.TUNNEL_DOMAIN}/`, 302);
   const id = match[1];
   const preview = await env.DOMAINS.prepare(
     "SELECT expires_at, visibility, access_code_hash FROM previews WHERE id = ?",
@@ -139,14 +113,7 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
     if (request.method === "POST") return handleCodeSubmission(request, env, id, preview, url);
     if (!(await hasCodeAccess(request, env, id, preview))) return previewCodePage(false);
   } else if (request.method === "POST") return siteNotFound();
-  const path = match[2] ?? "";
-  if (path === "") {
-    const index = await env.PREVIEWS.get(`${id}/index.html`);
-    if (index === null) return listing(env, id, cacheControl);
-    return new Response(request.method === "HEAD" ? null : index.body, {
-      headers: headers(index.httpMetadata?.contentType, index.httpEtag, cacheControl),
-    });
-  }
+  const path = match[2];
   let decoded: string;
   try {
     decoded = decodeURIComponent(path);

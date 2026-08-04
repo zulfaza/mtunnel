@@ -74,7 +74,7 @@ func previewCreateServer(t *testing.T, createBody *map[string]any) *httptest.Ser
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"id":"pv1","name":"index.html","url":"https://preview.makarima.xyz/pv1/","totalBytes":14,"fileCount":1,"createdAt":1,"expiresAt":2,"visibility":"code"}`))
+			w.Write([]byte(`{"id":"pv1","name":"index.html","url":"https://preview.makarima.xyz/pv1/index.html","totalBytes":14,"fileCount":1,"createdAt":1,"expiresAt":2,"visibility":"code"}`))
 		case r.Method == http.MethodPut:
 			w.WriteHeader(http.StatusNoContent)
 		default:
