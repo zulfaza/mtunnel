@@ -38,6 +38,7 @@ interface PreviewAccessRow {
   readonly expires_at: number;
   readonly visibility: string;
   readonly access_code_hash: string | null;
+  readonly manifest: string;
 }
 
 async function handleCodeSubmission(
@@ -96,11 +97,9 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
     return Response.redirect(`https://app.${env.TUNNEL_DOMAIN}/`, 302);
   const match = /^\/([a-z2-7]{26})(?:\/(.*))?$/u.exec(url.pathname);
   if (match?.[1] === undefined) return siteNotFound();
-  if (match[2] === undefined || match[2] === "")
-    return Response.redirect(`https://app.${env.TUNNEL_DOMAIN}/`, 302);
   const id = match[1];
   const preview = await env.DOMAINS.prepare(
-    "SELECT expires_at, visibility, access_code_hash FROM previews WHERE id = ?",
+    "SELECT expires_at, visibility, access_code_hash, manifest FROM previews WHERE id = ?",
   )
     .bind(id)
     .first<PreviewAccessRow>();
@@ -113,7 +112,23 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
     if (request.method === "POST") return handleCodeSubmission(request, env, id, preview, url);
     if (!(await hasCodeAccess(request, env, id, preview))) return previewCodePage(false);
   } else if (request.method === "POST") return siteNotFound();
-  const path = match[2];
+  let path = match[2];
+  if (path === undefined || path === "") {
+    let manifest: unknown;
+    try {
+      manifest = JSON.parse(preview.manifest);
+    } catch {
+      return siteNotFound();
+    }
+    if (!Array.isArray(manifest)) return siteNotFound();
+    const paths = manifest.flatMap((file): string[] => {
+      if (typeof file !== "object" || file === null || !("path" in file)) return [];
+      const value = file.path;
+      return typeof value === "string" ? [value] : [];
+    });
+    path = paths.includes("index.html") ? "index.html" : paths.length === 1 ? paths[0] : undefined;
+    if (path === undefined) return siteNotFound();
+  }
   let decoded: string;
   try {
     decoded = decodeURIComponent(path);

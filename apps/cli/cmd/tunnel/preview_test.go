@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,12 +26,12 @@ func TestPreviewPathUsesParentCommand(t *testing.T) {
 	}
 }
 
-func TestPreviewOutputURLUsesFilePathForSingleFile(t *testing.T) {
+func TestPreviewOutputURLUsesVersionRoot(t *testing.T) {
 	output, err := previewOutputURL("https://preview.makarima.xyz/id/", []previewFile{{Path: "demo video.mov"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output != "https://preview.makarima.xyz/id/demo%20video.mov" {
+	if output != "https://preview.makarima.xyz/id/" {
 		t.Fatalf("output = %q", output)
 	}
 }
@@ -60,6 +61,37 @@ func TestBuildPreviewManifestDirectory(t *testing.T) {
 		if len(file.SHA256) != 64 || file.ContentType == "" {
 			t.Fatalf("invalid file metadata: %#v", file)
 		}
+	}
+}
+
+func TestCollectPreviewRepoMetadataUsesSharedGitRepositoryForWorktrees(t *testing.T) {
+	mainRoot := t.TempDir()
+	runGit := func(directory string, arguments ...string) {
+		t.Helper()
+		command := exec.Command("git", arguments...)
+		command.Dir = directory
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", arguments, err, output)
+		}
+	}
+	runGit(mainRoot, "init", "--initial-branch=main")
+	runGit(mainRoot, "config", "user.email", "test@example.com")
+	runGit(mainRoot, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(mainRoot, "README.md"), []byte("test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(mainRoot, "add", "README.md")
+	runGit(mainRoot, "commit", "-m", "initial")
+	worktree := filepath.Join(t.TempDir(), "worktree")
+	runGit(mainRoot, "worktree", "add", worktree)
+
+	mainMetadata := collectPreviewRepoMetadata(mainRoot)
+	worktreeMetadata := collectPreviewRepoMetadata(worktree)
+	if mainMetadata.RepoOrg == nil || mainMetadata.RepoName == nil || worktreeMetadata.RepoOrg == nil || worktreeMetadata.RepoName == nil {
+		t.Fatalf("missing repository metadata: main=%#v worktree=%#v", mainMetadata, worktreeMetadata)
+	}
+	if *mainMetadata.RepoOrg != *worktreeMetadata.RepoOrg || *mainMetadata.RepoName != *worktreeMetadata.RepoName {
+		t.Fatalf("worktree metadata differs: main=%#v worktree=%#v", mainMetadata, worktreeMetadata)
 	}
 }
 
@@ -219,7 +251,7 @@ func TestPreviewVisibilitySubcommandServerError(t *testing.T) {
 func TestPreviewListShowsVisibility(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"previews":[{"id":"pv1","name":"site","url":"https://preview.makarima.xyz/pv1/","totalBytes":14,"fileCount":2,"createdAt":1,"expiresAt":2,"visibility":"private"}]}`))
+		w.Write([]byte(`{"previews":[{"id":"pv1","name":"site.html","version":2,"url":"https://preview.makarima.xyz/pv1","totalBytes":14,"fileCount":2,"createdAt":1,"expiresAt":2,"visibility":"private"}]}`))
 	}))
 	defer server.Close()
 	configPath := previewTestConfig(t, server.URL)
@@ -232,11 +264,11 @@ func TestPreviewListShowsVisibility(t *testing.T) {
 	}
 	lines := strings.Split(output.String(), "\n")
 	header := strings.Fields(lines[0])
-	if len(header) != 5 || header[1] != "NAME" || header[2] != "VISIBILITY" || header[3] != "FILES" {
+	if len(header) != 7 || header[1] != "VERSION" || header[2] != "NAME" || header[3] != "VISIBILITY" || header[5] != "URL" {
 		t.Fatalf("unexpected header: %q", lines[0])
 	}
 	row := strings.Fields(lines[1])
-	if len(row) < 4 || row[0] != "pv1" || row[1] != "site" || row[2] != "private" || row[3] != "2" {
+	if len(row) < 7 || row[0] != "pv1" || row[1] != "v2" || row[2] != "site.html" || row[3] != "private" || row[4] != "2" || row[5] != "https://preview.makarima.xyz/pv1" {
 		t.Fatalf("unexpected row: %q", lines[1])
 	}
 }

@@ -1,5 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
+  "account_id": "d208f39f5e99d9721643730ff43b738b",
   "name": "mtunnel-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-01",

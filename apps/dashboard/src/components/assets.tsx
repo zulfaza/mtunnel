@@ -74,7 +74,10 @@ function groupPreviews(previews: readonly Preview[]): readonly PreviewGroup[] {
       preview.repoOrg !== "" &&
       preview.repoName !== null &&
       preview.repoName !== "";
-    const key = hasRepository ? `${preview.repoOrg}/${preview.repoName}` : "";
+    const repositoryKey = hasRepository
+      ? `${preview.repoHost ?? ""}/${preview.repoOrg}/${preview.repoName}`
+      : "";
+    const key = `${preview.name}\u0000${repositoryKey}`;
     const existing = groups.get(key);
     if (existing !== undefined) {
       groups.set(key, { ...existing, previews: [...existing.previews, preview] });
@@ -86,14 +89,12 @@ function groupPreviews(previews: readonly Preview[]): readonly PreviewGroup[] {
         : null;
     groups.set(key, {
       key,
-      label: hasRepository ? key : "No repository",
+      label: preview.name,
       href,
       previews: [preview],
     });
   }
   return [...groups.values()].sort((left, right) => {
-    if (left.key === "") return 1;
-    if (right.key === "") return -1;
     return left.label.localeCompare(right.label);
   });
 }
@@ -159,16 +160,7 @@ export function AssetsPage({
     });
   };
 
-  const upload = (event: FormEvent): void => {
-    event.preventDefault();
-    const selectedFiles = [
-      ...(fileInput.current?.files === null || fileInput.current?.files === undefined
-        ? []
-        : [...fileInput.current.files]),
-      ...(directoryInput.current?.files === null || directoryInput.current?.files === undefined
-        ? []
-        : [...directoryInput.current.files]),
-    ];
+  const uploadSelectedFiles = (selectedFiles: readonly File[]): void => {
     if (selectedFiles.length === 0) return;
     setUploading(true);
     setError(null);
@@ -178,6 +170,18 @@ export function AssetsPage({
       )
       .catch(fail)
       .finally(() => setUploading(false));
+  };
+
+  const upload = (event: FormEvent): void => {
+    event.preventDefault();
+    uploadSelectedFiles([
+      ...(fileInput.current?.files === null || fileInput.current?.files === undefined
+        ? []
+        : [...fileInput.current.files]),
+      ...(directoryInput.current?.files === null || directoryInput.current?.files === undefined
+        ? []
+        : [...directoryInput.current.files]),
+    ]);
   };
 
   const removePreview = async (preview: Preview): Promise<void> => {
@@ -201,40 +205,38 @@ export function AssetsPage({
   return (
     <Shell>
       <section className="flex-1 px-5 py-8 sm:px-8">
-        <SectionHeading>Assets</SectionHeading>
+        <div className="flex items-center justify-between">
+          <SectionHeading>Assets</SectionHeading>
+          <Button
+            disabled={uploading}
+            onClick={() => fileInput.current?.click()}
+            type="button"
+            variant="primary"
+          >
+            + upload
+          </Button>
+        </div>
         <h1 className="mt-4 text-2xl font-medium tracking-tight">Preview assets</h1>
         <p className="mt-2 max-w-xl text-[13px] leading-6 text-muted-foreground">
           Static previews uploaded with{" "}
           <code className="border border-border-soft bg-muted px-1.5 text-xs">mt preview</code>. Set
           each asset to public, private, or public with an access code.
         </p>
-        <form
-          className="mt-6 flex flex-wrap items-end gap-3 border border-border-soft bg-muted p-4"
-          onSubmit={upload}
-        >
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="asset-files">Files</Label>
-            <Input
-              id="asset-files"
-              multiple
-              onChange={() => undefined}
-              ref={fileInput}
-              type="file"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="asset-directory">Directory</Label>
-            <Input
-              id="asset-directory"
-              multiple
-              onChange={() => undefined}
-              ref={directoryInput}
-              type="file"
-            />
-          </div>
-          <Button disabled={uploading} type="submit" variant="primary">
-            {uploading ? "Uploading…" : "Upload preview"}
-          </Button>
+        <form className="hidden" onSubmit={upload}>
+          <Input
+            id="asset-files"
+            multiple
+            onChange={() => uploadSelectedFiles([...(fileInput.current?.files ?? [])])}
+            ref={fileInput}
+            type="file"
+          />
+          <Input
+            id="asset-directory"
+            multiple
+            onChange={() => uploadSelectedFiles([...(directoryInput.current?.files ?? [])])}
+            ref={directoryInput}
+            type="file"
+          />
         </form>
         {error !== null && <p className="mt-4 text-[13px] text-destructive">{error}</p>}
         <div className="mt-6">
@@ -265,99 +267,105 @@ export function AssetsPage({
                   <Fragment key={group.key || "no-repository"}>
                     <TableRow>
                       <TableCell className="bg-muted py-2 text-xs font-medium" colSpan={6}>
-                        {group.href === null ? (
-                          group.label
-                        ) : (
+                        <span>{group.label}</span>
+                        {group.href !== null && (
                           <a
-                            className="text-accent-text underline-offset-4 hover:underline"
+                            className="ml-2 text-accent-text underline-offset-4 hover:underline"
                             href={group.href}
                             rel="noreferrer"
                             target="_blank"
                           >
-                            {group.label}
+                            repository
                           </a>
                         )}
                       </TableCell>
                     </TableRow>
-                    {group.previews.map((preview) => (
-                      <TableRow key={preview.id}>
-                        <TableCell>
-                          <div className="flex flex-col">
-                            <span className="font-medium text-foreground">{preview.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {preview.repoOrg !== null && preview.repoName !== null
-                                ? `${preview.repoOrg}/${preview.repoName}`
-                                : "No repository"}
-                            </span>
-                            <a
-                              className="inline-flex items-center gap-1 text-xs text-accent-text underline-offset-4 hover:underline"
-                              href={preview.url}
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              {new URL(preview.url).host}/{preview.id.slice(0, 8)}…
-                              <ExternalLink className="size-3" />
-                            </a>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Select
-                              onValueChange={(value) => {
-                                if (!isPreviewVisibility(value)) return;
-                                const visibility = value;
-                                if (visibility === "code") {
-                                  setCodePrompt(preview);
-                                  setAccessCode("");
-                                  return;
-                                }
-                                void applyVisibility(preview, visibility);
-                              }}
-                              value={preview.visibility}
-                            >
-                              <SelectTrigger className="w-36">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="public">public</SelectItem>
-                                <SelectItem value="private">private</SelectItem>
-                                <SelectItem value="code">public with code</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            {VISIBILITY_BADGE[preview.visibility]}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{preview.fileCount}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatBytes(preview.totalBytes)}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatExpiry(preview.expiresAt)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              aria-label="Copy URL"
-                              onClick={() => copyUrl(preview)}
-                              size="icon"
-                              title={copiedId === preview.id ? "Copied" : "Copy URL"}
-                              variant="ghost"
-                            >
-                              <Copy className={copiedId === preview.id ? "text-accent-text" : ""} />
-                            </Button>
-                            <Button
-                              aria-label="Delete preview"
-                              onClick={() => void removePreview(preview)}
-                              size="icon"
-                              title="Delete"
-                              variant="destructive"
-                            >
-                              <Trash2 />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {[...group.previews]
+                      .sort((left, right) => left.version - right.version)
+                      .map((preview) => (
+                        <TableRow key={preview.id}>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-medium text-foreground">{preview.name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {preview.repoOrg !== null && preview.repoName !== null
+                                  ? `${preview.repoOrg}/${preview.repoName}`
+                                  : "No repository"}
+                              </span>
+                              <a
+                                className="inline-flex items-center gap-1 text-xs text-accent-text underline-offset-4 hover:underline"
+                                href={preview.url}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                v{preview.version} · {new URL(preview.url).host}/
+                                {preview.id.slice(0, 8)}…
+                                <ExternalLink className="size-3" />
+                              </a>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Select
+                                onValueChange={(value) => {
+                                  if (!isPreviewVisibility(value)) return;
+                                  const visibility = value;
+                                  if (visibility === "code") {
+                                    setCodePrompt(preview);
+                                    setAccessCode("");
+                                    return;
+                                  }
+                                  void applyVisibility(preview, visibility);
+                                }}
+                                value={preview.visibility}
+                              >
+                                <SelectTrigger className="w-36">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="public">public</SelectItem>
+                                  <SelectItem value="private">private</SelectItem>
+                                  <SelectItem value="code">public with code</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {VISIBILITY_BADGE[preview.visibility]}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {preview.fileCount}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {formatBytes(preview.totalBytes)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {formatExpiry(preview.expiresAt)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                aria-label="Copy URL"
+                                onClick={() => copyUrl(preview)}
+                                size="icon"
+                                title={copiedId === preview.id ? "Copied" : "Copy URL"}
+                                variant="ghost"
+                              >
+                                <Copy
+                                  className={copiedId === preview.id ? "text-accent-text" : ""}
+                                />
+                              </Button>
+                              <Button
+                                aria-label="Delete preview"
+                                onClick={() => void removePreview(preview)}
+                                size="icon"
+                                title="Delete"
+                                variant="destructive"
+                              >
+                                <Trash2 />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                   </Fragment>
                 ))}
               </TableBody>

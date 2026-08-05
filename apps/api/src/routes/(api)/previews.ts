@@ -22,6 +22,7 @@ interface PreviewFile {
 interface PreviewRow {
   readonly id: string;
   readonly name: string;
+  readonly version: number;
   readonly total_bytes: number;
   readonly file_count: number;
   readonly created_at: number;
@@ -93,21 +94,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function previewResponse(row: PreviewRow, domain: string): Record<string, string | number | null> {
-  let filePath: string | undefined;
-  try {
-    const files: unknown = JSON.parse(row.manifest);
-    if (Array.isArray(files) && files.length === 1 && validFile(files[0])) filePath = files[0].path;
-  } catch {
-    filePath = undefined;
-  }
-  const urlPath =
-    filePath === undefined
-      ? `${row.id}/`
-      : `${row.id}/${filePath.split("/").map(encodeURIComponent).join("/")}`;
   return {
     id: row.id,
     name: row.name,
-    url: `https://${domain}/${urlPath}`,
+    version: row.version,
+    url: `https://${domain}/${row.id}`,
     totalBytes: row.total_bytes,
     fileCount: row.file_count,
     createdAt: row.created_at,
@@ -183,7 +174,7 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     return jsonError(413, "preview_limit_exceeded");
   const now = Date.now();
   const expiresAt = now + Number(env.PREVIEW_TTL_SECONDS ?? limits.previewTTLSeconds) * 1000;
-  const row: PreviewRow = {
+  const rowData = {
     id: Previews.previewId(),
     name: body.name,
     manifest: JSON.stringify(files),
@@ -196,41 +187,28 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     repo_org: optionalText(body, "repoOrg"),
     repo_name: optionalText(body, "repoName"),
   };
-  const existing =
-    row.repo_org !== null && row.repo_name !== null
-      ? await env.DOMAINS.prepare(
-          "SELECT id FROM previews WHERE organization_id = ? AND name = ? AND repo_host IS ? AND repo_org = ? AND repo_name = ? AND expires_at > ?",
-        )
-          .bind(auth.organizationId, row.name, row.repo_host, row.repo_org, row.repo_name, now)
-          .first<{ id: string }>()
-      : null;
-  if (existing !== null) {
-    await deletePrefix(env, existing.id);
-    await env.DOMAINS.prepare(
-      "UPDATE previews SET user_id = ?, manifest = ?, total_bytes = ?, file_count = ?, created_at = ?, expires_at = ?, visibility = ?, access_code_hash = ? WHERE id = ?",
+  const latest = await env.DOMAINS.prepare(
+    "SELECT COALESCE(MAX(version), 0) AS version FROM previews WHERE organization_id = ? AND name = ? AND repo_host IS ? AND repo_org IS ? AND repo_name IS ? AND expires_at > ?",
+  )
+    .bind(
+      auth.organizationId,
+      rowData.name,
+      rowData.repo_host,
+      rowData.repo_org,
+      rowData.repo_name,
+      now,
     )
-      .bind(
-        auth.userId,
-        row.manifest,
-        row.total_bytes,
-        row.file_count,
-        row.created_at,
-        row.expires_at,
-        row.visibility,
-        visibilityInput.accessCodeHash,
-        existing.id,
-      )
-      .run();
-    return jsonResponse(previewResponse({ ...row, id: existing.id }, env.PREVIEW_DOMAIN));
-  }
+    .first<{ version: number }>();
+  const row: PreviewRow = { ...rowData, version: (latest?.version ?? 0) + 1 };
   await env.DOMAINS.prepare(
-    "INSERT INTO previews (id, organization_id, user_id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO previews (id, organization_id, user_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   )
     .bind(
       row.id,
       auth.organizationId,
       auth.userId,
       row.name,
+      row.version,
       row.manifest,
       row.total_bytes,
       row.file_count,
@@ -264,7 +242,7 @@ export async function handlePreviewUpdate(
   const visibilityInput = await visibilityFromBody(body, env.AUTH_SECRET);
   if (visibilityInput === null) return jsonError(400, "bad_request");
   const updated = await env.DOMAINS.prepare(
-    "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ? RETURNING id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name",
+    "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ? RETURNING id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name",
   )
     .bind(
       visibilityInput.visibility,
@@ -324,7 +302,7 @@ export async function handlePreviewList(request: Request, env: Env): Promise<Res
   const auth = await authenticateUser(request, env);
   if (!auth.ok) return authErrorResponse(auth);
   const result = await env.DOMAINS.prepare(
-    "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
+    "SELECT id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
   )
     .bind(auth.organizationId, Date.now())
     .all<PreviewRow>();
@@ -341,7 +319,7 @@ export async function handlePreviewDelete(
   const auth = await authenticateUser(request, env);
   if (!auth.ok) return authErrorResponse(auth);
   const row = await env.DOMAINS.prepare(
-    "SELECT id, name, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
+    "SELECT id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
   )
     .bind(id, auth.organizationId, auth.userId)
     .first<PreviewRow>();

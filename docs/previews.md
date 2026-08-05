@@ -1,7 +1,7 @@
 # Previews (upload HTML / artifacts / video from the CLI)
 
 `mt preview <path>` uploads a file or directory from the CLI, stores it in R2,
-and serves it publicly at `https://preview.makarima.xyz/<id>/`. Dedicated host,
+and serves it publicly at `https://preview.makarima.xyz/<id>`. Dedicated host,
 ~100 MiB per-file cap, TTL with cron cleanup. This document is the feature
 reference; it was written as the implementation plan and matches what shipped.
 
@@ -12,10 +12,10 @@ untouched.
 
 ```console
 $ mt preview ./dist                       # directory (static site / artifacts)
-https://preview.makarima.xyz/p7w3k9.../   (24 files, expires in 7 days)
+https://preview.makarima.xyz/p7w3k9...   (24 files, expires in 7 days)
 
 $ mt preview demo.mp4                     # single file (video, HTML, ...)
-https://preview.makarima.xyz/p7w3k9.../demo.mp4
+https://preview.makarima.xyz/p7w3k9...
 
 $ mt preview list                         # aliases: ls
 $ mt preview delete <id>                  # aliases: rm
@@ -51,6 +51,8 @@ CREATE INDEX previews_expires_at ON previews(expires_at);
 - Migration `0006_preview_visibility.sql` adds `visibility TEXT NOT NULL
 DEFAULT 'public'` (`public` | `private` | `code`) and `access_code_hash TEXT`
   (`v2:<salt-hex>:<hmac-hex>`, set only for `code`).
+- Migration `0008_preview_versions.sql` adds `version`; uploads with the same
+  filename and repository metadata create a new immutable version and ID.
 
 ## API (new `apps/api/src/routes/(api)/previews.ts`, follows domains.ts)
 

@@ -17,11 +17,15 @@ function RootDocument(): ReactNode {
         <title>{title}</title>
         <meta content={description} name="description" />
         <meta content="#fbfaf8" name="theme-color" />
+        <meta content="mTunnel dashboard" name="application-name" />
+        <meta content="mTunnel dashboard" name="apple-mobile-web-app-title" />
         <link href={pageUrl} rel="canonical" />
-        <link href="/favicon.ico" rel="icon" />
+        <link href="/favicon.ico" rel="icon" sizes="any" />
+        <link href="/favicon.ico" rel="shortcut icon" />
         <link href="/favicon-32x32.png" rel="icon" sizes="32x32" type="image/png" />
         <link href="/favicon-16x16.png" rel="icon" sizes="16x16" type="image/png" />
         <link href="/apple-touch-icon.png" rel="apple-touch-icon" sizes="180x180" />
+        <link href="/site.webmanifest" rel="manifest" />
         <meta content="website" property="og:type" />
         <meta content="mTunnel" property="og:site_name" />
         <meta content={title} property="og:title" />

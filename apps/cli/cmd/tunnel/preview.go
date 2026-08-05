@@ -36,6 +36,7 @@ type previewFile struct {
 type previewResult struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
+	Version    int    `json:"version"`
 	URL        string `json:"url"`
 	TotalBytes int64  `json:"totalBytes"`
 	FileCount  int    `json:"fileCount"`
@@ -70,15 +71,7 @@ func validatePreviewVisibility(visibility, accessCode string) error {
 }
 
 func previewOutputURL(base string, files []previewFile) (string, error) {
-	if len(files) != 1 {
-		return base, nil
-	}
-	parsed, err := url.Parse(base)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return "", fmt.Errorf("invalid preview URL")
-	}
-	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/" + files[0].Path
-	return parsed.String(), nil
+	return base, nil
 }
 
 func previewContentType(path string) (string, error) {
@@ -179,19 +172,43 @@ func buildPreviewManifest(input string) (string, []previewFile, error) {
 
 func collectPreviewRepoMetadata(cwd string) previewRepoMetadata {
 	repoRoot := gitValue(cwd, "rev-parse", "--show-toplevel")
+	repositoryRoot := previewRepositoryRoot(cwd, repoRoot)
 	remote := gitValue(cwd, "config", "--get", "remote.origin.url")
 	parsed := parsePreviewRemote(remote)
 	org := parsed.org
 	name := parsed.name
-	if org == nil && repoRoot != nil {
-		value := filepath.Base(filepath.Dir(*repoRoot))
+	if org == nil && repositoryRoot != nil {
+		value := filepath.Base(filepath.Dir(*repositoryRoot))
 		org = &value
 	}
-	if name == nil && repoRoot != nil {
-		value := filepath.Base(*repoRoot)
+	if name == nil && repositoryRoot != nil {
+		value := filepath.Base(*repositoryRoot)
 		name = &value
 	}
 	return previewRepoMetadata{RepoOrg: org, RepoName: name, RepoHost: parsed.host}
+}
+
+func previewRepositoryRoot(cwd string, repoRoot *string) *string {
+	commonDir := gitValue(cwd, "rev-parse", "--git-common-dir")
+	if commonDir == nil {
+		return repoRoot
+	}
+	commonPath := *commonDir
+	if !filepath.IsAbs(commonPath) {
+		commonPath = filepath.Join(cwd, commonPath)
+	}
+	absolute, err := filepath.Abs(commonPath)
+	if err != nil {
+		return repoRoot
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return repoRoot
+	}
+	if filepath.Base(resolved) == ".git" {
+		resolved = filepath.Dir(resolved)
+	}
+	return &resolved
 }
 
 type previewRemote struct {
@@ -460,11 +477,11 @@ func newPreviewCmd(o *rootOptions) *cobra.Command {
 			return fmt.Errorf("list previews: %w", err)
 		}
 		writer := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-		if _, err = fmt.Fprintln(writer, "ID\tNAME\tVISIBILITY\tFILES\tEXPIRES"); err != nil {
+		if _, err = fmt.Fprintln(writer, "ID\tVERSION\tNAME\tVISIBILITY\tFILES\tURL\tEXPIRES"); err != nil {
 			return err
 		}
 		for _, item := range previews {
-			if _, err = fmt.Fprintf(writer, "%s\t%s\t%s\t%d\t%s\n", item.ID, item.Name, item.Visibility, item.FileCount, time.UnixMilli(item.ExpiresAt).Local().Format("2006-01-02 15:04:05 MST")); err != nil {
+			if _, err = fmt.Fprintf(writer, "%s\tv%d\t%s\t%s\t%d\t%s\t%s\n", item.ID, item.Version, item.Name, item.Visibility, item.FileCount, item.URL, time.UnixMilli(item.ExpiresAt).Local().Format("2006-01-02 15:04:05 MST")); err != nil {
 				return err
 			}
 		}

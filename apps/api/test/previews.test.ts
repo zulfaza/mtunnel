@@ -38,7 +38,7 @@ async function createPreview(): Promise<CreatedPreview> {
 }
 
 describe("previews", () => {
-  it("reuses a preview for the same repository and name", async () => {
+  it("versions previews for the same repository and name", async () => {
     const body = {
       name: "site.html",
       repoHost: "github.com",
@@ -60,11 +60,13 @@ describe("previews", () => {
         body: JSON.stringify(body),
       });
     const first = await create();
-    const firstValue = (await first.json()) as { id: string; url: string };
+    const firstValue = (await first.json()) as { id: string; url: string; version: number };
     const second = await create();
-    const secondValue = (await second.json()) as { id: string; url: string };
-    expect(secondValue.id).toBe(firstValue.id);
-    expect(secondValue.url).toBe(`https://preview.worker.test/${firstValue.id}/site.html`);
+    const secondValue = (await second.json()) as { id: string; url: string; version: number };
+    expect(secondValue.id).not.toBe(firstValue.id);
+    expect(firstValue.version).toBe(1);
+    expect(secondValue.version).toBe(2);
+    expect(secondValue.url).toBe(`https://preview.worker.test/${secondValue.id}`);
   });
 
   it("redirects preview roots to the dashboard", async () => {
@@ -90,6 +92,9 @@ describe("previews", () => {
     expect(served.status).toBe(206);
     expect(await served.text()).toBe("ell");
     expect(served.headers.get("content-range")).toBe("bytes 1-3/5");
+    const root = await SELF.fetch(`http://preview.worker.test/${preview.id}`);
+    expect(root.status).toBe(200);
+    expect(await root.text()).toBe("hello");
     const deleted = await SELF.fetch(`http://worker.test/api/v1/previews/${preview.id}`, {
       method: "DELETE",
       headers: { authorization: "Bearer development-token" },
