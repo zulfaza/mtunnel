@@ -22,24 +22,24 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactNode
 
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-6xl flex-col border-x border-border-soft bg-background">
-      <header className="flex items-center justify-between gap-4 border-b border-border-soft px-5 py-3.5 sm:px-8">
-        <div className="flex items-center gap-5">
-          <a
-            className="text-sm font-semibold tracking-tight text-foreground no-underline"
-            href="https://makarima.xyz"
-          >
-            m<em className="not-italic text-accent-text">T</em>unnel
-            <span className="ml-2 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-              dashboard
-            </span>
-          </a>
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 border-b border-border-soft px-5 py-3.5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:px-8">
+        <a
+          className="text-sm font-semibold tracking-tight text-foreground no-underline"
+          href="https://makarima.xyz"
+        >
+          m<em className="not-italic text-accent-text">T</em>unnel
+          <span className="ml-2 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            dashboard
+          </span>
+        </a>
+        <div className="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:row-start-auto">
           <OrganizationSwitcher />
         </div>
         <div className="relative">
           <button
             aria-expanded={accountMenuOpen}
             aria-haspopup="menu"
-            className="max-w-56 truncate text-[13px] text-muted-foreground hover:text-foreground"
+            className="block max-w-[40vw] truncate text-[13px] text-muted-foreground hover:text-foreground sm:max-w-56"
             onClick={() => setAccountMenuOpen((open) => !open)}
             type="button"
           >

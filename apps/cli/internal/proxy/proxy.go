@@ -53,6 +53,16 @@ type request struct {
 	bytesIn atomic.Int64
 }
 
+// NewHTTPClient preserves upstream redirects for the remote caller to follow.
+func NewHTTPClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{DisableCompression: true, Proxy: http.ProxyFromEnvironment},
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
 func New(opts Options) *Dispatcher {
 	if opts.BaseContext == nil {
 		opts.BaseContext = context.Background()
@@ -64,7 +74,7 @@ func New(opts Options) *Dispatcher {
 		opts.Logger = slog.Default()
 	}
 	if opts.HTTPClient == nil {
-		opts.HTTPClient = &http.Client{Transport: &http.Transport{DisableCompression: true, Proxy: http.ProxyFromEnvironment}}
+		opts.HTTPClient = NewHTTPClient()
 	}
 	return &Dispatcher{ctx: opts.BaseContext, upstream: strings.TrimRight(opts.Upstream, "/"), timeout: opts.Timeout, tunnelID: opts.TunnelID, logger: opts.Logger, send: opts.Send, httpClient: opts.HTTPClient, requests: make(map[protocol.RequestID]*request), accepting: true}
 }
@@ -160,6 +170,9 @@ func (d *Dispatcher) run(id protocol.RequestID, r *request) {
 	}
 	for _, h := range r.start.Headers {
 		req.Header.Add(h[0], h[1])
+	}
+	if forwardedHost := req.Header.Get("x-forwarded-host"); forwardedHost != "" {
+		req.Host = forwardedHost
 	}
 	resp, err := d.httpClient.Do(req)
 	if err != nil {

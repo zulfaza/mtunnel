@@ -96,6 +96,46 @@ func TestSimpleGETRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRedirectIsForwarded(t *testing.T) {
+	redirectTarget := newHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer redirectTarget.Close()
+	upstream := newHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", redirectTarget.URL)
+		w.WriteHeader(http.StatusTemporaryRedirect)
+	}))
+	defer upstream.Close()
+	d, messages, _ := newTestDispatcher(t, upstream.URL, time.Second)
+	id := protocol.NewRequestID()
+	d.Start(protocol.RequestStart{RequestID: id, Method: http.MethodGet, Path: "/"})
+	start, _ := responseFor(t, messages, id)
+	if start.Status != http.StatusTemporaryRedirect {
+		t.Fatalf("status = %d, want %d", start.Status, http.StatusTemporaryRedirect)
+	}
+}
+
+func TestForwardedHostReachesUpstream(t *testing.T) {
+	receivedHost := make(chan string, 1)
+	upstream := newHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		receivedHost <- request.Host
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+	d, messages, _ := newTestDispatcher(t, upstream.URL, time.Second)
+	id := protocol.NewRequestID()
+	d.Start(protocol.RequestStart{
+		RequestID: id,
+		Method:    http.MethodGet,
+		Path:      "/",
+		Headers:   protocol.HeaderPairs{{"x-forwarded-host", "dashboard.example.com"}},
+	})
+	responseFor(t, messages, id)
+	if host := <-receivedHost; host != "dashboard.example.com" {
+		t.Fatalf("host = %q, want dashboard.example.com", host)
+	}
+}
+
 func TestAccessLogFormatting(t *testing.T) {
 	if got := endpointPath("/hello?token=secret"); got != "/hello" {
 		t.Fatalf("endpoint path = %q, want /hello", got)

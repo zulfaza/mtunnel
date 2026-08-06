@@ -15,12 +15,26 @@ import { groupPreviews } from "../lib/preview-groups.js";
 import { createPreview, deletePreview, updatePreview } from "../server/previews.js";
 import { PreviewAccessDialog } from "./preview-access.js";
 import { SectionHeading, Shell } from "./shell.js";
+import { ActionMenu, ActionMenuItem } from "./ui/action-menu.js";
 import { Button } from "./ui/button.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog.js";
 import { Input } from "./ui/input.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.js";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.js";
 
 type Preview = Schemas.PreviewView;
+
+type DeletePreviewState =
+  | { readonly status: "idle" }
+  | { readonly status: "confirming"; readonly preview: Preview }
+  | { readonly status: "deleting"; readonly preview: Preview };
 
 function isPreviewVisibility(value: string): value is Preview["visibility"] {
   return value === "public" || value === "private" || value === "code";
@@ -41,6 +55,7 @@ export function AssetsPage({
   const [previews, setPreviews] = useState<readonly Preview[] | null>(initialPreviews);
   const [error, setError] = useState<string | null>(null);
   const [accessPreview, setAccessPreview] = useState<Preview | null>(null);
+  const [deleteState, setDeleteState] = useState<DeletePreviewState>({ status: "idle" });
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -107,14 +122,18 @@ export function AssetsPage({
     ]);
   };
 
-  const removePreview = async (preview: Preview): Promise<void> => {
-    if (!window.confirm(`Delete preview "${preview.name}"? This cannot be undone.`)) return;
+  const removePreview = async (): Promise<void> => {
+    if (deleteState.status !== "confirming") return;
+    const preview = deleteState.preview;
+    setDeleteState({ status: "deleting", preview });
     setError(null);
     try {
       await deletePreview({ data: { id: preview.id } });
       setPreviews((current) => current?.filter((item) => item.id !== preview.id) ?? null);
     } catch (cause) {
       fail(cause);
+    } finally {
+      setDeleteState({ status: "idle" });
     }
   };
 
@@ -262,41 +281,31 @@ export function AssetsPage({
                           {formatExpiry(preview.expiresAt)}
                         </TableCell>
                         <TableCell>
-                          <div className="flex justify-end gap-1">
-                            <Button asChild size="icon" title="Open preview" variant="ghost">
-                              <a href={preview.url} rel="noreferrer" target="_blank">
-                                <ExternalLink />
-                              </a>
-                            </Button>
-                            {preview.visibility === "code" && (
-                              <Button
-                                aria-label="Manage preview access"
-                                onClick={() => setAccessPreview(preview)}
-                                size="icon"
-                                title="Manage access"
-                                variant="ghost"
+                          <div className="flex justify-end">
+                            <ActionMenu label={`Actions for ${preview.name}`}>
+                              <ActionMenuItem asChild>
+                                <a href={preview.url} rel="noreferrer" target="_blank">
+                                  <ExternalLink /> Open preview
+                                </a>
+                              </ActionMenuItem>
+                              {preview.visibility === "code" && (
+                                <ActionMenuItem onSelect={() => setAccessPreview(preview)}>
+                                  <KeyRound /> Manage access
+                                </ActionMenuItem>
+                              )}
+                              <ActionMenuItem onSelect={() => copyUrl(preview)}>
+                                <Copy
+                                  className={copiedId === preview.id ? "text-accent-text" : ""}
+                                />
+                                {copiedId === preview.id ? "Copied" : "Copy URL"}
+                              </ActionMenuItem>
+                              <ActionMenuItem
+                                destructive
+                                onSelect={() => setDeleteState({ status: "confirming", preview })}
                               >
-                                <KeyRound />
-                              </Button>
-                            )}
-                            <Button
-                              aria-label="Copy URL"
-                              onClick={() => copyUrl(preview)}
-                              size="icon"
-                              title={copiedId === preview.id ? "Copied" : "Copy URL"}
-                              variant="ghost"
-                            >
-                              <Copy className={copiedId === preview.id ? "text-accent-text" : ""} />
-                            </Button>
-                            <Button
-                              aria-label="Delete preview"
-                              onClick={() => void removePreview(preview)}
-                              size="icon"
-                              title="Delete"
-                              variant="destructive"
-                            >
-                              <Trash2 />
-                            </Button>
+                                <Trash2 /> Delete preview
+                              </ActionMenuItem>
+                            </ActionMenu>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -318,7 +327,47 @@ export function AssetsPage({
         }}
         preview={accessPreview}
       />
+      <DeletePreviewDialog
+        onClose={() => setDeleteState({ status: "idle" })}
+        onConfirm={() => void removePreview()}
+        state={deleteState}
+      />
     </Shell>
+  );
+}
+
+function DeletePreviewDialog({
+  state,
+  onClose,
+  onConfirm,
+}: {
+  readonly state: DeletePreviewState;
+  readonly onClose: () => void;
+  readonly onConfirm: () => void;
+}): ReactNode {
+  const preview = state.status === "idle" ? null : state.preview;
+  const deleting = state.status === "deleting";
+
+  return (
+    <Dialog onOpenChange={(open) => !open && !deleting && onClose()} open={preview !== null}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete preview?</DialogTitle>
+          <DialogDescription>
+            This will permanently delete “{preview?.name}” and all its uploaded files. This action
+            cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button disabled={deleting} onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button disabled={deleting} onClick={onConfirm} type="button" variant="destructive">
+            <Trash2 /> {deleting ? "Deleting…" : "Delete preview"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

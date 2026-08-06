@@ -4,6 +4,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import type { Schemas } from "@tunnel/core";
 import { addDomain, deleteDomain, refreshDomain, verifyDomain } from "../server/domains.js";
 import { SectionHeading, Shell } from "./shell.js";
+import { ActionMenu, ActionMenuItem } from "./ui/action-menu.js";
 import { Button } from "./ui/button.js";
 import { Input } from "./ui/input.js";
 import { Label } from "./ui/label.js";
@@ -137,35 +138,22 @@ export function DomainsPage({
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex justify-end gap-1">
-                        {domain.status === "pending_dns" && (
-                          <Button
-                            onClick={() => verify(domain)}
-                            size="icon"
-                            title="Verify"
-                            variant="ghost"
-                          >
-                            <RefreshCw />
-                          </Button>
-                        )}
-                        {domain.status === "provisioning" && (
-                          <Button
-                            onClick={() => refresh(domain)}
-                            size="icon"
-                            title="Refresh"
-                            variant="ghost"
-                          >
-                            <RefreshCw />
-                          </Button>
-                        )}
-                        <Button
-                          onClick={() => remove(domain)}
-                          size="icon"
-                          title="Delete"
-                          variant="destructive"
-                        >
-                          <Trash2 />
-                        </Button>
+                      <div className="flex justify-end">
+                        <ActionMenu label={`Actions for ${domain.hostname}`}>
+                          {domain.status === "pending_dns" && (
+                            <ActionMenuItem onSelect={() => verify(domain)}>
+                              <RefreshCw /> Verify
+                            </ActionMenuItem>
+                          )}
+                          {domain.status === "provisioning" && (
+                            <ActionMenuItem onSelect={() => refresh(domain)}>
+                              <RefreshCw /> Refresh
+                            </ActionMenuItem>
+                          )}
+                          <ActionMenuItem destructive onSelect={() => remove(domain)}>
+                            <Trash2 /> Delete domain
+                          </ActionMenuItem>
+                        </ActionMenu>
                       </div>
                     </TableCell>
                   </TableRow>

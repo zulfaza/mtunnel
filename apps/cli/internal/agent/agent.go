@@ -45,7 +45,7 @@ func Run(ctx context.Context, opts Options) error {
 	upstream := fmt.Sprintf("http://%s:%d", opts.Hostname, opts.Port)
 	httpClient := opts.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Transport: &http.Transport{DisableCompression: true, Proxy: http.ProxyFromEnvironment}}
+		httpClient = proxy.NewHTTPClient()
 	}
 	var idle *time.Timer
 	if opts.IdleTimeout > 0 {

@@ -4,6 +4,7 @@ import { env } from "cloudflare:workers";
 import { Effect } from "effect";
 import { decodeJwt } from "jose";
 import { Organizations, Workos } from "@tunnel/core";
+import { workosRedirectUri } from "../lib/workos-redirect.js";
 import { runCore } from "./runtime.js";
 import {
   clearSession,
@@ -42,7 +43,7 @@ export const beginLogin = createServerFn({ method: "GET" })
     );
     const target = new URL("https://api.workos.com/user_management/authorize");
     target.searchParams.set("client_id", env.WORKOS_CLIENT_ID);
-    target.searchParams.set("redirect_uri", new URL("/callback", getRequestUrl()).toString());
+    target.searchParams.set("redirect_uri", workosRedirectUri(getRequestUrl()));
     target.searchParams.set("response_type", "code");
     target.searchParams.set("provider", "authkit");
     target.searchParams.set("screen_hint", data.screenHint);

@@ -1,9 +1,11 @@
-import { Link } from "@tanstack/react-router";
-import { ArrowLeft, ExternalLink } from "lucide-react";
-import type { ReactNode } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, ExternalLink, Trash2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import type { Schemas } from "@tunnel/core";
 import { formatBytes, formatExpiry, formatUploadTime } from "../lib/preview-format.js";
+import { deletePreview } from "../server/previews.js";
 import { SectionHeading, Shell } from "./shell.js";
+import { ActionMenu, ActionMenuItem } from "./ui/action-menu.js";
 import { Badge } from "./ui/badge.js";
 import { Button } from "./ui/button.js";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.js";
@@ -27,9 +29,38 @@ export function PreviewDetailPage({
 }: {
   readonly versions: readonly Preview[];
 }): ReactNode {
-  const latest = versions[0];
+  const navigate = useNavigate();
+  const [currentVersions, setCurrentVersions] = useState(versions);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const latest = currentVersions[0];
   if (latest === undefined) return null;
   const repositoryUrl = repositoryHref(latest);
+
+  const removeVersion = async (preview: Preview): Promise<void> => {
+    if (!window.confirm(`Delete ${preview.name} v${preview.version}? This cannot be undone.`))
+      return;
+    setDeletingId(preview.id);
+    setError(null);
+    try {
+      await deletePreview({ data: { id: preview.id } });
+      const remaining = currentVersions.filter((version) => version.id !== preview.id);
+      if (remaining.length === 0) {
+        await navigate({ to: "/" });
+        return;
+      }
+      setCurrentVersions(remaining);
+    } catch (cause) {
+      if (cause instanceof Error && cause.message === "signed_out") {
+        await navigate({ to: "/login" });
+        return;
+      }
+      setError(cause instanceof Error ? cause.message : "Delete failed.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <Shell>
       <section className="flex-1 px-5 py-8 sm:px-8">
@@ -74,9 +105,10 @@ export function PreviewDetailPage({
         <div className="mt-7 flex items-center justify-between">
           <SectionHeading>Version history</SectionHeading>
           <span className="text-xs text-muted-foreground">
-            {versions.length} {versions.length === 1 ? "version" : "versions"}
+            {currentVersions.length} {currentVersions.length === 1 ? "version" : "versions"}
           </span>
         </div>
+        {error !== null && <p className="mt-3 text-xs text-destructive">{error}</p>}
         <div className="mt-3">
           <Table className="min-w-[48rem]">
             <TableHeader>
@@ -87,11 +119,11 @@ export function PreviewDetailPage({
                 <TableHead>Contents</TableHead>
                 <TableHead>Size</TableHead>
                 <TableHead>Expires</TableHead>
-                <TableHead className="text-right">Preview</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {versions.map((preview, index) => (
+              {currentVersions.map((preview, index) => (
                 <TableRow key={preview.id}>
                   <TableCell className="font-medium">
                     v{preview.version}
@@ -119,11 +151,22 @@ export function PreviewDetailPage({
                     {formatExpiry(preview.expiresAt)}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button asChild>
-                      <a href={preview.url} rel="noreferrer" target="_blank">
-                        open <ExternalLink />
-                      </a>
-                    </Button>
+                    <div className="flex justify-end">
+                      <ActionMenu label={`Actions for version ${preview.version}`}>
+                        <ActionMenuItem asChild>
+                          <a href={preview.url} rel="noreferrer" target="_blank">
+                            <ExternalLink /> Open version
+                          </a>
+                        </ActionMenuItem>
+                        <ActionMenuItem
+                          destructive
+                          disabled={deletingId !== null}
+                          onSelect={() => void removeVersion(preview)}
+                        >
+                          <Trash2 /> Delete version
+                        </ActionMenuItem>
+                      </ActionMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
