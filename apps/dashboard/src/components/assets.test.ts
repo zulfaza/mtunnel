@@ -30,17 +30,14 @@ function preview(
 }
 
 describe("preview grouping", () => {
-  it("sorts groups by group and repository name", () => {
+  it("combines worktree groups by repository", () => {
     const groups = groupPreviews([
       preview("3", "c", "c.html", "weekly", "zeta", 3),
       preview("2", "b", "b.html", "daily", "zeta", 2),
       preview("1", "a", "a.html", "daily", "alpha", 1),
     ]);
-    expect(groups.map((group) => [group.groupName, group.repositoryName])).toEqual([
-      ["daily", "alpha"],
-      ["daily", "zeta"],
-      ["weekly", "zeta"],
-    ]);
+    expect(groups.map((group) => group.repositoryName)).toEqual(["alpha", "zeta"]);
+    expect(groups[1]?.files.map((file) => file.id)).toEqual(["3", "2"]);
   });
 
   it("keeps only each file's latest version and sorts latest uploads first", () => {
@@ -51,5 +48,14 @@ describe("preview grouping", () => {
     ]);
     expect(groups).toHaveLength(1);
     expect(groups[0]?.files.map((file) => file.id)).toEqual(["new", "details"]);
+  });
+
+  it("keeps the newest file when worktrees created separate version histories", () => {
+    const groups = groupPreviews([
+      preview("worktree", "worktree-document", "og.html", "worktree-fixed-20260806", "mtunnel", 1),
+      preview("main", "main-document", "og.html", null, "mtunnel", 2, 6),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.files.map((file) => file.id)).toEqual(["main"]);
   });
 });

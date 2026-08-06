@@ -4,7 +4,6 @@ type Preview = Schemas.PreviewView;
 
 export interface PreviewGroup {
   readonly key: string;
-  readonly groupName: string | null;
   readonly repositoryName: string;
   readonly href: string | null;
   readonly files: readonly Preview[];
@@ -12,7 +11,6 @@ export interface PreviewGroup {
 
 interface PreviewGroupBuilder {
   readonly key: string;
-  readonly groupName: string | null;
   readonly repositoryName: string;
   readonly href: string | null;
   readonly files: Map<string, Preview>;
@@ -34,40 +32,34 @@ export function groupPreviews(previews: readonly Preview[]): readonly PreviewGro
     const repositoryKey = hasRepository
       ? `${preview.repoHost ?? ""}/${preview.repoOrg}/${preview.repoName}`
       : "";
-    const key = `${preview.group ?? ""}\u0000${repositoryKey}`;
+    const key = repositoryKey;
     const existing = groups.get(key);
     if (existing !== undefined) {
-      const current = existing.files.get(preview.documentId);
+      const current = existing.files.get(preview.name);
       existing.files.set(
-        preview.documentId,
+        preview.name,
         current === undefined ? preview : newerPreview(current, preview),
       );
       continue;
     }
     groups.set(key, {
       key,
-      groupName: preview.group,
       repositoryName: hasRepository ? preview.repoName : "No repository",
       href:
         hasRepository && preview.repoHost !== null
           ? `https://${preview.repoHost}/${preview.repoOrg}/${preview.repoName}`
           : null,
-      files: new Map([[preview.documentId, preview]]),
+      files: new Map([[preview.name, preview]]),
     });
   }
   return [...groups.values()]
     .map((group) => ({
       key: group.key,
-      groupName: group.groupName,
       repositoryName: group.repositoryName,
       href: group.href,
       files: [...group.files.values()].sort(
         (left, right) => right.createdAt - left.createdAt || left.name.localeCompare(right.name),
       ),
     }))
-    .sort(
-      (left, right) =>
-        (left.groupName ?? "").localeCompare(right.groupName ?? "") ||
-        left.repositoryName.localeCompare(right.repositoryName),
-    );
+    .sort((left, right) => left.repositoryName.localeCompare(right.repositoryName));
 }
