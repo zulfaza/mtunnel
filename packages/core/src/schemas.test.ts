@@ -2,6 +2,8 @@ import { Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import {
   AccessCode,
+  PreviewAccessView,
+  PreviewCreateRequest,
   PreviewFile,
   PreviewVisibility,
   TunnelId,
@@ -30,5 +32,29 @@ describe("core schemas", () => {
         sha256: "0".repeat(64),
       }),
     ).toThrow();
+  });
+
+  it("validates custom preview groups", () => {
+    const request = {
+      name: "report.html",
+      group: "eod-report",
+      files: [],
+    };
+    expect(Schema.decodeUnknownSync(PreviewCreateRequest)(request)).toEqual(request);
+    expect(() =>
+      Schema.decodeUnknownSync(PreviewCreateRequest)({ ...request, group: "" }),
+    ).toThrow();
+  });
+
+  it("validates preview access management views", () => {
+    expect(
+      Schema.decodeUnknownSync(PreviewAccessView)({
+        codes: [{ id: "code-id", createdAt: 1 }],
+        sessions: [{ id: "session-id", createdAt: 2, expiresAt: 3 }],
+      }),
+    ).toEqual({
+      codes: [{ id: "code-id", createdAt: 1 }],
+      sessions: [{ id: "session-id", createdAt: 2, expiresAt: 3 }],
+    });
   });
 });

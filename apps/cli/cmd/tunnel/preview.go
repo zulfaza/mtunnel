@@ -294,7 +294,7 @@ func previewRequest(o *rootOptions, method, path string, body func() (io.ReadClo
 	})
 }
 
-func createPreview(o *rootOptions, name string, files []previewFile, metadata previewRepoMetadata, visibility, accessCode string) (previewResult, error) {
+func createPreview(o *rootOptions, name string, files []previewFile, metadata previewRepoMetadata, visibility, accessCode, customGroup string) (previewResult, error) {
 	if visibility == "public" {
 		visibility, accessCode = "", ""
 	}
@@ -304,7 +304,8 @@ func createPreview(o *rootOptions, name string, files []previewFile, metadata pr
 		previewRepoMetadata
 		Visibility string `json:"visibility,omitempty"`
 		AccessCode string `json:"accessCode,omitempty"`
-	}{name, files, metadata, visibility, accessCode})
+		Group      string `json:"group,omitempty"`
+	}{name, files, metadata, visibility, accessCode, customGroup})
 	if err != nil {
 		return previewResult{}, err
 	}
@@ -409,7 +410,7 @@ func listPreviews(o *rootOptions) ([]previewResult, error) {
 }
 
 func newPreviewCmd(o *rootOptions) *cobra.Command {
-	var visibility, accessCode string
+	var visibility, accessCode, customGroup string
 	preview := &cobra.Command{
 		Use:   "preview <path>",
 		Short: "Upload and manage public previews",
@@ -417,6 +418,9 @@ func newPreviewCmd(o *rootOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := validatePreviewVisibility(visibility, accessCode); err != nil {
 				return err
+			}
+			if utf8.RuneCountInString(customGroup) > 255 {
+				return fmt.Errorf("--group must be at most 255 characters")
 			}
 			name, files, err := buildPreviewManifest(args[0])
 			if err != nil {
@@ -430,7 +434,7 @@ func newPreviewCmd(o *rootOptions) *cobra.Command {
 			if !inputInfo.IsDir() {
 				metadataRoot = filepath.Dir(args[0])
 			}
-			result, err := createPreview(o, name, files, collectPreviewRepoMetadata(metadataRoot), visibility, accessCode)
+			result, err := createPreview(o, name, files, collectPreviewRepoMetadata(metadataRoot), visibility, accessCode, customGroup)
 			if err != nil {
 				return fmt.Errorf("create preview: %w", err)
 			}
@@ -443,6 +447,7 @@ func newPreviewCmd(o *rootOptions) *cobra.Command {
 	}
 	preview.Flags().StringVar(&visibility, "visibility", "public", "preview visibility: public, private, or code")
 	preview.Flags().StringVar(&accessCode, "code", "", "access code for code visibility")
+	preview.Flags().StringVar(&customGroup, "group", "", "custom preview group")
 	var updateAccessCode string
 	updateVisibility := &cobra.Command{Use: "visibility <id> <public|private|code>", Args: exactArgsWithHelp(2), RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validatePreviewVisibility(args[1], updateAccessCode); err != nil {

@@ -16,6 +16,9 @@ import {
 } from "./preview-access.js";
 import {
   PreviewCreateRequest,
+  type PreviewAccessCodeView,
+  type PreviewAccessSessionView,
+  type PreviewAccessView,
   PreviewFile,
   PreviewView,
   type OrganizationLimits,
@@ -33,6 +36,7 @@ interface PreviewRow {
   readonly expires_at: number;
   readonly manifest: string;
   readonly visibility: string;
+  readonly group_name: string | null;
   readonly repo_host: string | null;
   readonly repo_org: string | null;
   readonly repo_name: string | null;
@@ -56,6 +60,20 @@ interface PreviewUploadInput extends PreviewIdentity {
   readonly contentLength: string | null;
 }
 
+interface PreviewAccessIdentity {
+  readonly organizationId: string;
+  readonly previewId: string;
+}
+
+interface PreviewDocumentIdentity {
+  readonly organizationId: string;
+  readonly documentId: string;
+}
+
+interface PreviewAccessItemIdentity extends PreviewAccessIdentity {
+  readonly id: string;
+}
+
 const PreviewRowSchema = Schema.Struct({
   id: Schema.String,
   document_id: Schema.String,
@@ -67,6 +85,7 @@ const PreviewRowSchema = Schema.Struct({
   expires_at: Schema.Number,
   manifest: Schema.String,
   visibility: Schema.String,
+  group_name: Schema.NullOr(Schema.String),
   repo_host: Schema.NullOr(Schema.String),
   repo_org: Schema.NullOr(Schema.String),
   repo_name: Schema.NullOr(Schema.String),
@@ -156,6 +175,7 @@ function response(row: PreviewRow, domain: string): PreviewView {
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     visibility: isPreviewVisibility(row.visibility) ? row.visibility : "public",
+    group: row.group_name,
     repoHost: row.repo_host,
     repoOrg: row.repo_org,
     repoName: row.repo_name,
@@ -201,6 +221,18 @@ export class Previews extends Context.Service<
       input: PreviewUploadInput,
     ) => Effect.Effect<void, BadRequestError | InvalidManifestError | NotFoundError>;
     readonly list: (organizationId: string) => Effect.Effect<readonly PreviewView[]>;
+    readonly versions: (
+      input: PreviewDocumentIdentity,
+    ) => Effect.Effect<readonly PreviewView[], NotFoundError>;
+    readonly access: (
+      input: PreviewAccessIdentity,
+    ) => Effect.Effect<PreviewAccessView, NotFoundError>;
+    readonly deleteAccessCode: (
+      input: PreviewAccessItemIdentity,
+    ) => Effect.Effect<void, NotFoundError>;
+    readonly revokeAccessSession: (
+      input: PreviewAccessItemIdentity,
+    ) => Effect.Effect<void, NotFoundError>;
     readonly delete: (input: PreviewIdentity) => Effect.Effect<PreviewView, NotFoundError>;
     readonly cleanupExpired: () => Effect.Effect<void>;
     readonly findForServing: (id: string) => Effect.Effect<{
@@ -300,12 +332,13 @@ export const previewsLayer = Layer.effect(
       const repoHost = request.repoHost ?? null;
       const repoOrg = request.repoOrg ?? null;
       const repoName = request.repoName ?? null;
+      const group = request.group ?? null;
       const latestVersion = yield* Effect.promise(() =>
         database
           .prepare(
-            "SELECT version, document_id FROM previews WHERE organization_id = ? AND name = ? AND repo_host IS ? AND repo_org IS ? AND repo_name IS ? AND expires_at > ? ORDER BY version DESC LIMIT 1",
+            "SELECT version, document_id FROM previews WHERE organization_id = ? AND name = ? AND group_name IS ? AND repo_host IS ? AND repo_org IS ? AND repo_name IS ? AND expires_at > ? ORDER BY version DESC LIMIT 1",
           )
-          .bind(input.organizationId, request.name, repoHost, repoOrg, repoName, Date.now())
+          .bind(input.organizationId, request.name, group, repoHost, repoOrg, repoName, Date.now())
           .first<{ version: number; document_id: string | null }>(),
       );
       const current = yield* Effect.promise(() => {
@@ -335,13 +368,14 @@ export const previewsLayer = Layer.effect(
         created_at: now,
         expires_at: now + limits.previewTTLSeconds * 1000,
         visibility: visibility.visibility,
+        group_name: group,
         repo_host: repoHost,
         repo_org: repoOrg,
         repo_name: repoName,
       };
       const insert = database
         .prepare(
-          "INSERT INTO previews (id, document_id, organization_id, user_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO previews (id, document_id, organization_id, user_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, group_name, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(
           row.id,
@@ -357,6 +391,7 @@ export const previewsLayer = Layer.effect(
           row.expires_at,
           row.visibility,
           visibility.accessCodeHash,
+          row.group_name,
           row.repo_host,
           row.repo_org,
           row.repo_name,
@@ -385,7 +420,7 @@ export const previewsLayer = Layer.effect(
       if (existing?.document_id === undefined || existing.document_id === null)
         return yield* Effect.fail(new NotFoundError({}));
       const documentId = existing.document_id;
-      const update = database
+      const updateStatement = database
         .prepare(
           "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ?",
         )
@@ -397,12 +432,12 @@ export const previewsLayer = Layer.effect(
           now,
         );
       yield* Effect.promise(() =>
-        database.batch([update, ...accessCodeStatements(documentId, visibility, now)]),
+        database.batch([updateStatement, ...accessCodeStatements(documentId, visibility, now)]),
       );
       const value = yield* Effect.promise(() =>
         database
           .prepare(
-            "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND expires_at > ?",
+            "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, group_name, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND expires_at > ?",
           )
           .bind(input.id, input.organizationId, now)
           .first(),
@@ -444,7 +479,7 @@ export const previewsLayer = Layer.effect(
       const result = yield* Effect.promise(() =>
         database
           .prepare(
-            "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
+            "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, group_name, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
           )
           .bind(organizationId, Date.now())
           .all(),
@@ -454,11 +489,95 @@ export const previewsLayer = Layer.effect(
         return decoded._tag === "None" ? [] : [response(decoded.value, config.previewDomain)];
       });
     });
+    const versions = Effect.fn("previews.versions")(function* (input: PreviewDocumentIdentity) {
+      const result = yield* Effect.promise(() =>
+        database
+          .prepare(
+            "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, group_name, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND document_id = ? AND expires_at > ? ORDER BY version DESC",
+          )
+          .bind(input.organizationId, input.documentId, Date.now())
+          .all(),
+      );
+      const values = result.results.flatMap((value): readonly PreviewView[] => {
+        const decoded = decodePreviewRow(value);
+        return decoded._tag === "None" ? [] : [response(decoded.value, config.previewDomain)];
+      });
+      if (values.length === 0) return yield* Effect.fail(new NotFoundError({}));
+      return values;
+    });
+    const accessFor = Effect.fn("previews.access")(function* (input: PreviewAccessIdentity) {
+      const now = Date.now();
+      const preview = yield* Effect.promise(() =>
+        database
+          .prepare(
+            "SELECT document_id FROM previews WHERE id = ? AND organization_id = ? AND expires_at > ?",
+          )
+          .bind(input.previewId, input.organizationId, now)
+          .first<{ document_id: string | null }>(),
+      );
+      if (preview?.document_id === undefined || preview.document_id === null)
+        return yield* Effect.fail(new NotFoundError({}));
+      const codes = yield* Effect.promise(() =>
+        database
+          .prepare(
+            "SELECT id, created_at FROM preview_access_codes WHERE document_id = ? AND used_at IS NULL ORDER BY created_at DESC",
+          )
+          .bind(preview.document_id)
+          .all(),
+      );
+      const sessions = yield* Effect.promise(() =>
+        database
+          .prepare(
+            "SELECT session_hash, created_at, expires_at FROM preview_access_grants WHERE document_id = ? AND expires_at > ? ORDER BY created_at DESC",
+          )
+          .bind(preview.document_id, now)
+          .all(),
+      );
+      return {
+        codes: codes.results.flatMap((value): readonly PreviewAccessCodeView[] => {
+          const id = recordValue(value, "id");
+          const createdAt = recordValue(value, "created_at");
+          return typeof id === "string" && typeof createdAt === "number" ? [{ id, createdAt }] : [];
+        }),
+        sessions: sessions.results.flatMap((value): readonly PreviewAccessSessionView[] => {
+          const id = recordValue(value, "session_hash");
+          const createdAt = recordValue(value, "created_at");
+          const expiresAt = recordValue(value, "expires_at");
+          return typeof id === "string" &&
+            typeof createdAt === "number" &&
+            typeof expiresAt === "number"
+            ? [{ id, createdAt, expiresAt }]
+            : [];
+        }),
+      };
+    });
+    const removeAccess = Effect.fn("previews.remove_access")(function* (
+      table: "preview_access_codes" | "preview_access_grants",
+      idColumn: "id" | "session_hash",
+      input: PreviewAccessItemIdentity,
+    ) {
+      const result = yield* Effect.promise(() =>
+        database
+          .prepare(
+            `DELETE FROM ${table} WHERE ${idColumn} = ? AND document_id IN (SELECT document_id FROM previews WHERE id = ? AND organization_id = ? AND expires_at > ?)`,
+          )
+          .bind(input.id, input.previewId, input.organizationId, Date.now())
+          .run(),
+      );
+      if (result.meta.changes === 0) return yield* Effect.fail(new NotFoundError({}));
+    });
+    const deleteAccessCode = Effect.fn("previews.delete_access_code")(
+      (input: PreviewAccessItemIdentity) => removeAccess("preview_access_codes", "id", input),
+    );
+    const revokeAccessSession = Effect.fn("previews.revoke_access_session")(
+      (input: PreviewAccessItemIdentity) =>
+        removeAccess("preview_access_grants", "session_hash", input),
+    );
     const remove = Effect.fn("previews.delete")(function* (input: PreviewIdentity) {
       const value = yield* Effect.promise(() =>
         database
           .prepare(
-            "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
+            "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, group_name, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
           )
           .bind(input.id, input.organizationId, input.userId)
           .first(),
@@ -507,6 +626,10 @@ export const previewsLayer = Layer.effect(
       update,
       upload,
       list,
+      versions,
+      access: accessFor,
+      deleteAccessCode,
+      revokeAccessSession,
       delete: remove,
       cleanupExpired,
       findForServing,

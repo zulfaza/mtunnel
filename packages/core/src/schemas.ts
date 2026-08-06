@@ -62,11 +62,31 @@ export const PreviewView = Schema.Struct({
   createdAt: Schema.Number,
   expiresAt: Schema.Number,
   visibility: PreviewVisibility,
+  group: Schema.NullOr(Schema.String),
   repoHost: Schema.NullOr(Schema.String),
   repoOrg: Schema.NullOr(Schema.String),
   repoName: Schema.NullOr(Schema.String),
 });
 export type PreviewView = Schema.Schema.Type<typeof PreviewView>;
+
+export const PreviewAccessCodeView = Schema.Struct({
+  id: Schema.String,
+  createdAt: Schema.Number,
+});
+export type PreviewAccessCodeView = Schema.Schema.Type<typeof PreviewAccessCodeView>;
+
+export const PreviewAccessSessionView = Schema.Struct({
+  id: Schema.String,
+  createdAt: Schema.Number,
+  expiresAt: Schema.Number,
+});
+export type PreviewAccessSessionView = Schema.Schema.Type<typeof PreviewAccessSessionView>;
+
+export const PreviewAccessView = Schema.Struct({
+  codes: Schema.Array(PreviewAccessCodeView),
+  sessions: Schema.Array(PreviewAccessSessionView),
+});
+export type PreviewAccessView = Schema.Schema.Type<typeof PreviewAccessView>;
 
 export const DomainStatus = Schema.Literals(["pending_dns", "provisioning", "active", "failed"]);
 export type DomainStatus = Schema.Schema.Type<typeof DomainStatus>;
@@ -142,6 +162,9 @@ export const PreviewCreateRequest = Schema.Struct({
   files: Schema.Array(PreviewFile),
   visibility: Schema.optionalKey(PreviewVisibility),
   accessCode: Schema.optionalKey(AccessCode),
+  group: Schema.optionalKey(
+    Schema.String.pipe(Schema.check(Schema.isMinLength(1)), Schema.check(Schema.isMaxLength(255))),
+  ),
   repoHost: Schema.optionalKey(Schema.NullOr(Schema.String)),
   repoOrg: Schema.optionalKey(Schema.NullOr(Schema.String)),
   repoName: Schema.optionalKey(Schema.NullOr(Schema.String)),

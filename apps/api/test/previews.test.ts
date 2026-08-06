@@ -69,6 +69,54 @@ describe("previews", () => {
     expect(secondValue.url).toBe(`https://preview.worker.test/${secondValue.id}`);
   });
 
+  it("groups custom previews while versioning each name independently", async () => {
+    const create = async (name: string): Promise<unknown> => {
+      const response = await SELF.fetch("http://worker.test/api/v1/previews", {
+        method: "POST",
+        headers: { authorization: "Bearer development-token", "content-type": "application/json" },
+        body: JSON.stringify({
+          name,
+          group: "eod-report",
+          files: [
+            {
+              path: "index.html",
+              size: 5,
+              contentType: "text/html",
+              sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+            },
+          ],
+        }),
+      });
+      expect(response.status).toBe(201);
+      return response.json();
+    };
+    const first = await create("summary.html");
+    const second = await create("details.html");
+    const third = await create("summary.html");
+    if (
+      typeof first !== "object" ||
+      first === null ||
+      !("documentId" in first) ||
+      !("version" in first) ||
+      typeof second !== "object" ||
+      second === null ||
+      !("documentId" in second) ||
+      !("version" in second) ||
+      !("group" in second) ||
+      typeof third !== "object" ||
+      third === null ||
+      !("documentId" in third) ||
+      !("version" in third)
+    )
+      throw new Error("invalid preview response");
+    expect(first.version).toBe(1);
+    expect(second.version).toBe(1);
+    expect(second.documentId).not.toBe(first.documentId);
+    expect(second.group).toBe("eod-report");
+    expect(third.version).toBe(2);
+    expect(third.documentId).toBe(first.documentId);
+  });
+
   it("redirects preview roots to the dashboard", async () => {
     const response = await SELF.fetch("http://preview.worker.test/", { redirect: "manual" });
     expect(response.status).toBe(302);

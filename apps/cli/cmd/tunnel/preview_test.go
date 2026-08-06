@@ -150,6 +150,26 @@ func TestPreviewCreateSendsVisibilityAndAccessCode(t *testing.T) {
 	}
 }
 
+func TestPreviewCreateSendsCustomGroup(t *testing.T) {
+	var createBody map[string]any
+	server := previewCreateServer(t, &createBody)
+	directory := t.TempDir()
+	page := filepath.Join(directory, "index.html")
+	if err := os.WriteFile(page, []byte("<h1>Hello</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := previewTestConfig(t, server.URL)
+	cmd := newPreviewCmd(&rootOptions{config: configPath})
+	cmd.SetOut(io.Discard)
+	cmd.SetArgs([]string{page, "--group", "eod-report"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if createBody["group"] != "eod-report" {
+		t.Fatalf("unexpected create body: %#v", createBody)
+	}
+}
+
 func TestPreviewCreateOmitsVisibilityForPublic(t *testing.T) {
 	var createBody map[string]any
 	server := previewCreateServer(t, &createBody)

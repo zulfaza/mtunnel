@@ -31,6 +31,7 @@ interface PreviewRow {
   readonly expires_at: number;
   readonly manifest: string;
   readonly visibility: string;
+  readonly group_name: string | null;
   readonly repo_host: string | null;
   readonly repo_org: string | null;
   readonly repo_name: string | null;
@@ -96,6 +97,13 @@ function optionalPreviewMetadata(body: Record<string, unknown>): boolean {
   });
 }
 
+function optionalPreviewGroup(body: Record<string, unknown>): boolean {
+  const value = body.group;
+  return (
+    value === undefined || (typeof value === "string" && value.length > 0 && value.length <= 255)
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -112,6 +120,7 @@ function previewResponse(row: PreviewRow, domain: string): Record<string, string
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     visibility: row.visibility,
+    group: row.group_name,
     repoHost: row.repo_host,
     repoOrg: row.repo_org,
     repoName: row.repo_name,
@@ -171,7 +180,8 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     body.name.length > 255 ||
     !Array.isArray(body.files) ||
     !body.files.every(validFile) ||
-    !optionalPreviewMetadata(body)
+    !optionalPreviewMetadata(body) ||
+    !optionalPreviewGroup(body)
   )
     return jsonError(400, "bad_request");
   const visibilityInput = await visibilityFromBody(body, env.AUTH_SECRET);
@@ -214,16 +224,18 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     created_at: now,
     expires_at: expiresAt,
     visibility: visibilityInput.visibility,
+    group_name: optionalText(body, "group"),
     repo_host: optionalText(body, "repoHost"),
     repo_org: optionalText(body, "repoOrg"),
     repo_name: optionalText(body, "repoName"),
   };
   const latest = await env.DOMAINS.prepare(
-    "SELECT version, document_id FROM previews WHERE organization_id = ? AND name = ? AND repo_host IS ? AND repo_org IS ? AND repo_name IS ? AND expires_at > ? ORDER BY version DESC LIMIT 1",
+    "SELECT version, document_id FROM previews WHERE organization_id = ? AND name = ? AND group_name IS ? AND repo_host IS ? AND repo_org IS ? AND repo_name IS ? AND expires_at > ? ORDER BY version DESC LIMIT 1",
   )
     .bind(
       auth.organizationId,
       rowData.name,
+      rowData.group_name,
       rowData.repo_host,
       rowData.repo_org,
       rowData.repo_name,
@@ -236,7 +248,7 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     version: (latest?.version ?? 0) + 1,
   };
   const insert = env.DOMAINS.prepare(
-    "INSERT INTO previews (id, document_id, organization_id, user_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO previews (id, document_id, organization_id, user_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, group_name, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).bind(
     row.id,
     row.document_id,
@@ -251,6 +263,7 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     row.expires_at,
     row.visibility,
     visibilityInput.accessCodeHash,
+    row.group_name,
     row.repo_host,
     row.repo_org,
     row.repo_name,
@@ -295,7 +308,7 @@ export async function handlePreviewUpdate(
     ...accessCodeStatements(env, existing.document_id, visibilityInput, now),
   ]);
   const updated = await env.DOMAINS.prepare(
-    "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND expires_at > ?",
+    "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, group_name, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND expires_at > ?",
   )
     .bind(id, auth.organizationId, now)
     .first<PreviewRow>();
@@ -349,7 +362,7 @@ export async function handlePreviewList(request: Request, env: Env): Promise<Res
   const auth = await authenticateUser(request, env);
   if (!auth.ok) return authErrorResponse(auth);
   const result = await env.DOMAINS.prepare(
-    "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
+    "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, group_name, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
   )
     .bind(auth.organizationId, Date.now())
     .all<PreviewRow>();
@@ -366,7 +379,7 @@ export async function handlePreviewDelete(
   const auth = await authenticateUser(request, env);
   if (!auth.ok) return authErrorResponse(auth);
   const row = await env.DOMAINS.prepare(
-    "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
+    "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, group_name, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
   )
     .bind(id, auth.organizationId, auth.userId)
     .first<PreviewRow>();

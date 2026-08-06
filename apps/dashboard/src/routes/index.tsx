@@ -7,15 +7,21 @@ import { listPreviews } from "../server/previews.js";
 export const Route = createFileRoute("/")({
   loader: async () => {
     try {
-      const [, previews] = await Promise.all([currentUser(), listPreviews()]);
-      return { previews };
-    } catch {
+      await currentUser();
+    } catch (cause) {
+      if (!isSignedOut(cause)) throw cause;
       const login = await beginLogin({ data: { screenHint: "sign-in" } });
       throw redirect({ href: login.url });
     }
+    const previews = await listPreviews();
+    return { previews };
   },
   component: IndexPage,
 });
+
+function isSignedOut(cause: unknown): boolean {
+  return cause instanceof Error && cause.message === "signed_out";
+}
 
 function IndexPage(): ReactNode {
   const data = Route.useLoaderData();

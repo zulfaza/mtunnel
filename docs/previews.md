@@ -20,6 +20,7 @@ https://preview.makarima.xyz/p7w3k9...
 $ mt preview list                         # aliases: ls
 $ mt preview delete <id>                  # aliases: rm
 
+$ mt preview ./dist --group eod-report    # custom dashboard group
 $ mt preview ./dist --visibility code --code letmein-secure   # gate behind an access code
 $ mt preview visibility <id> private                   # change later
 ```
@@ -151,6 +152,8 @@ Vars: `PREVIEW_DOMAIN`, `MAX_PREVIEW_FILE_BYTES`, `MAX_PREVIEW_FILES`,
   slog setup), final URL to stdout so `mt preview ./dist | pbcopy` works.
 - `list` prints a tabwriter table like `domain list`; `delete` mirrors
   `domain delete`.
+- `--group <name>` adds a custom dashboard group within the repository. Repeated
+  uploads of the same path name increment that file's version.
 
 ## Tests
 

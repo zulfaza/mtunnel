@@ -15,6 +15,7 @@ import { Route as DomainsRouteImport } from './routes/domains'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as TunnelsRouteImport } from './routes/tunnels'
+import { Route as AssetsDocumentIdRouteImport } from './routes/assets/$documentId'
 import { Route as AssetsUploadSplatRouteImport } from './routes/assets/upload/$'
 
 const IndexRoute = IndexRouteImport.update({
@@ -47,6 +48,11 @@ const TunnelsRoute = TunnelsRouteImport.update({
   path: '/tunnels',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AssetsDocumentIdRoute = AssetsDocumentIdRouteImport.update({
+  id: '/assets/$documentId',
+  path: '/assets/$documentId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AssetsUploadSplatRoute = AssetsUploadSplatRouteImport.update({
   id: '/assets/upload/$',
   path: '/assets/upload/$',
@@ -60,6 +66,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/tunnels': typeof TunnelsRoute
+  '/assets/$documentId': typeof AssetsDocumentIdRoute
   '/assets/upload/$': typeof AssetsUploadSplatRoute
 }
 export interface FileRoutesByTo {
@@ -69,6 +76,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/tunnels': typeof TunnelsRoute
+  '/assets/$documentId': typeof AssetsDocumentIdRoute
   '/assets/upload/$': typeof AssetsUploadSplatRoute
 }
 export interface FileRoutesById {
@@ -79,6 +87,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/tunnels': typeof TunnelsRoute
+  '/assets/$documentId': typeof AssetsDocumentIdRoute
   '/assets/upload/$': typeof AssetsUploadSplatRoute
 }
 export interface FileRouteTypes {
@@ -90,6 +99,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/tunnels'
+    | '/assets/$documentId'
     | '/assets/upload/$'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -99,6 +109,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/tunnels'
+    | '/assets/$documentId'
     | '/assets/upload/$'
   id:
     | '__root__'
@@ -108,6 +119,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/tunnels'
+    | '/assets/$documentId'
     | '/assets/upload/$'
   fileRoutesById: FileRoutesById
 }
@@ -118,6 +130,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
   TunnelsRoute: typeof TunnelsRoute
+  AssetsDocumentIdRoute: typeof AssetsDocumentIdRoute
   AssetsUploadSplatRoute: typeof AssetsUploadSplatRoute
 }
 
@@ -165,6 +178,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TunnelsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/assets/$documentId': {
+      id: '/assets/$documentId'
+      path: '/assets/$documentId'
+      fullPath: '/assets/$documentId'
+      preLoaderRoute: typeof AssetsDocumentIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/assets/upload/$': {
       id: '/assets/upload/$'
       path: '/assets/upload/$'
@@ -182,6 +202,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
   TunnelsRoute: TunnelsRoute,
+  AssetsDocumentIdRoute: AssetsDocumentIdRoute,
   AssetsUploadSplatRoute: AssetsUploadSplatRoute,
 }
 export const routeTree = rootRouteImport
