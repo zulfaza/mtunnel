@@ -20,6 +20,7 @@ import {
 import { Input } from "./ui/input.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.js";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.js";
+import { Tooltip } from "./ui/tooltip.js";
 
 type Preview = Schemas.PreviewView;
 
@@ -168,10 +169,10 @@ export function AssetsPage({
             <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-full">Name</TableHead>
-                  <TableHead>Visibility</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="w-44">Visibility</TableHead>
+                  <TableHead className="w-32">Expires</TableHead>
+                  <TableHead className="w-28 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -195,14 +196,16 @@ export function AssetsPage({
                     {group.files.map((preview) => (
                       <TableRow key={preview.id}>
                         <TableCell className="min-w-0">
-                          <Link
-                            className="block truncate font-medium text-foreground underline-offset-4 hover:text-accent-text hover:underline"
-                            params={{ documentId: preview.documentId }}
-                            to="/assets/$documentId"
-                          >
-                            <span className="mr-1.5 text-accent-text">[v{preview.version}]</span>
-                            {preview.name}
-                          </Link>
+                          <Tooltip content={preview.name}>
+                            <Link
+                              className="block truncate font-medium text-foreground underline-offset-4 hover:text-accent-text hover:underline"
+                              params={{ documentId: preview.documentId }}
+                              to="/assets/$documentId"
+                            >
+                              <span className="mr-1.5 text-accent-text">[v{preview.version}]</span>
+                              {preview.name}
+                            </Link>
+                          </Tooltip>
                           <div className="mt-0.5 text-xs text-muted-foreground">
                             {formatBytes(preview.totalBytes)} | {preview.version}{" "}
                             {preview.version === 1 ? "file" : "files"}

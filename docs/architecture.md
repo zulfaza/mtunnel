@@ -54,9 +54,10 @@ hibernation. A new connection for the same tunnel closes the old one with code 4
 
 D1 holds custom-domain and preview metadata. R2 is used only for public preview
 artifacts; tunnel traffic remains unpersisted. Durable Object storage holds only
-tunnel metadata. Bodies stream in frames no larger than 256 KiB. Default aggregate
-limits are 50 MiB per request, 100 MiB per response, 32 pending requests, and 30
-seconds to response start or between response chunks.
+tunnel metadata. Bodies stream in frames no larger than 256 KiB. Code defaults
+are 50 MiB per request, 100 MiB per response, 32 pending requests, and 30
+seconds to response start or between response chunks; production currently
+configures 100 pending requests.
 
 ## Public applications
 

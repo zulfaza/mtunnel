@@ -5,8 +5,8 @@ server through Cloudflare. The API Worker routes public traffic to one Durable O
 per tunnel; a Go agent maintains a hibernatable WebSocket connection and streams
 requests to localhost.
 
-It is intended for personal development and webhook testing. It is not a general
-TCP tunnel, traffic inspector, multi-user service, or production ingress.
+It is intended for development, webhook testing, and small organization-based
+workflows. It is not a general TCP tunnel, traffic inspector, or production ingress.
 
 ## Requirements
 
@@ -75,7 +75,7 @@ Public URL:
 http://127.0.0.1:8787/t/local-test
 
 Forwarding:
-http://127.0.0.1:3000
+http://localhost:3000
 ```
 
 Open `http://127.0.0.1:8787/t/local-test/`. Local development path routing is
@@ -118,7 +118,8 @@ mt http api
 Explicit `--name` and `--hostname` flags override their configured values.
 
 Common flags are `--server`, `--token`, `--config`, `--hostname`, `--name`,
-`--request-timeout`, and `--log-level`. Command-line secrets can be visible in
+`--request-timeout`, `--idle-timeout`, `--allow-cors`, and `--log-level`.
+Command-line secrets can be visible in
 the local process list; prefer `mt login` for routine use.
 
 Only one agent may own a tunnel name. A newer connection replaces the older one.
@@ -150,12 +151,13 @@ localhost. Override its ports with `MTUNNEL_E2E_EDGE_PORT` and
 - [Security](docs/security.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Wire protocol](docs/protocol.md)
-- [Implementation plan and status](docs/plan.md)
+- [Previews](docs/previews.md)
+- [Analytics](docs/analytics.md)
 
 ## Scope and limitations
 
-mtunnel supports streamed HTTP only. TCP, UDP, SSH, dashboards, teams, analytics,
-replay, inspection, multiple agents per tunnel, and response caching are
-intentionally out of scope. Public tunnel URLs have no end-user
-authentication; anything reachable through the selected local port is public
-while the tunnel is connected.
+mtunnel supports streamed HTTP only. TCP, UDP, SSH, replay, inspection, multiple
+agents per tunnel, and response caching are intentionally out of scope. The
+dashboard and organizations manage previews, domains, and tunnel status, but do
+not start new tunnels. Public tunnel URLs have no end-user authentication;
+anything reachable through the selected local port is public while connected.

@@ -22,7 +22,7 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactNode
 
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-6xl flex-col border-x border-border-soft bg-background">
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 border-b border-border-soft px-5 py-3.5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:px-8">
+      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-border-soft px-5 py-3.5 sm:px-8">
         <a
           className="text-sm font-semibold tracking-tight text-foreground no-underline"
           href="https://makarima.xyz"
@@ -32,7 +32,7 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactNode
             dashboard
           </span>
         </a>
-        <div className="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:row-start-auto">
+        <div className="order-3 basis-full min-w-0 sm:order-none sm:basis-auto sm:mr-auto">
           <OrganizationSwitcher />
         </div>
         <div className="relative">
