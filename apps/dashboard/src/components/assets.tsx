@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Schemas } from "@tunnel/core";
-import { formatBytes, formatExpiry, formatUploadTime } from "../lib/preview-format.js";
+import { formatBytes, formatExpiry } from "../lib/preview-format.js";
 import { groupPreviews } from "../lib/preview-groups.js";
 import { createPreview, deletePreview, updatePreview } from "../server/previews.js";
 import { PreviewAccessDialog } from "./preview-access.js";
@@ -193,14 +193,11 @@ export function AssetsPage({
               </p>
             </div>
           ) : (
-            <Table className="min-w-[62rem]">
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Latest upload</TableHead>
-                  <TableHead>Version</TableHead>
+                  <TableHead className="w-full">Name</TableHead>
                   <TableHead>Visibility</TableHead>
-                  <TableHead>Size</TableHead>
                   <TableHead>Expires</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -209,13 +206,7 @@ export function AssetsPage({
                 {groupPreviews(previews).map((group) => (
                   <Fragment key={group.key || "no-repository"}>
                     <TableRow>
-                      <TableCell className="bg-muted py-2 text-xs font-medium" colSpan={7}>
-                        {group.groupName !== null && (
-                          <>
-                            <span>{group.groupName}</span>
-                            <span className="mx-2 text-muted-foreground">/</span>
-                          </>
-                        )}
+                      <TableCell className="bg-muted py-2 text-xs font-medium" colSpan={4}>
                         {group.href !== null && (
                           <a
                             className="text-accent-text underline-offset-4 hover:underline"
@@ -231,22 +222,20 @@ export function AssetsPage({
                     </TableRow>
                     {group.files.map((preview) => (
                       <TableRow key={preview.id}>
-                        <TableCell>
+                        <TableCell className="min-w-0">
                           <Link
-                            className="font-medium text-foreground underline-offset-4 hover:text-accent-text hover:underline"
+                            className="block truncate font-medium text-foreground underline-offset-4 hover:text-accent-text hover:underline"
                             params={{ documentId: preview.documentId }}
                             to="/assets/$documentId"
                           >
+                            <span className="mr-1.5 text-accent-text">[v{preview.version}]</span>
                             {preview.name}
                           </Link>
                           <div className="mt-0.5 text-xs text-muted-foreground">
-                            {preview.fileCount} {preview.fileCount === 1 ? "file" : "files"}
+                            {formatBytes(preview.totalBytes)} | {preview.version}{" "}
+                            {preview.version === 1 ? "file" : "files"}
                           </div>
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-muted-foreground">
-                          {formatUploadTime(preview.createdAt)}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">v{preview.version}</TableCell>
                         <TableCell>
                           <div className="flex items-center">
                             <Select
@@ -269,15 +258,12 @@ export function AssetsPage({
                               <SelectContent>
                                 <SelectItem value="public">public</SelectItem>
                                 <SelectItem value="private">private</SelectItem>
-                                <SelectItem value="code">public with code</SelectItem>
+                                <SelectItem value="code">code</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatBytes(preview.totalBytes)}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
+                        <TableCell className="whitespace-nowrap text-muted-foreground">
                           {formatExpiry(preview.expiresAt)}
                         </TableCell>
                         <TableCell>

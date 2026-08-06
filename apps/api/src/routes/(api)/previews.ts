@@ -301,8 +301,13 @@ export async function handlePreviewUpdate(
     return jsonError(404, "not_found");
   const now = Date.now();
   const update = env.DOMAINS.prepare(
-    "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ?",
-  ).bind(visibilityInput.visibility, visibilityInput.accessCodeHash, id, auth.organizationId, now);
+    "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE document_id = ? AND organization_id = ?",
+  ).bind(
+    visibilityInput.visibility,
+    visibilityInput.accessCodeHash,
+    existing.document_id,
+    auth.organizationId,
+  );
   await env.DOMAINS.batch([
     update,
     ...accessCodeStatements(env, existing.document_id, visibilityInput, now),

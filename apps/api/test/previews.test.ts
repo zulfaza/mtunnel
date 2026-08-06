@@ -288,6 +288,7 @@ describe("previews", () => {
 
   it("updates preview visibility", async () => {
     const preview = await createPreview();
+    const version = await createPreview();
     const updated = await SELF.fetch(`http://worker.test/api/v1/previews/${preview.id}`, {
       method: "PATCH",
       headers: { authorization: "Bearer development-token", "content-type": "application/json" },
@@ -297,6 +298,8 @@ describe("previews", () => {
     expect(((await updated.json()) as { visibility: string }).visibility).toBe("private");
     const blocked = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`);
     expect(blocked.status).toBe(403);
+    const blockedVersion = await SELF.fetch(`http://preview.worker.test/${version.id}/index.html`);
+    expect(blockedVersion.status).toBe(403);
     const invalid = await SELF.fetch(`http://worker.test/api/v1/previews/${preview.id}`, {
       method: "PATCH",
       headers: { authorization: "Bearer development-token", "content-type": "application/json" },
