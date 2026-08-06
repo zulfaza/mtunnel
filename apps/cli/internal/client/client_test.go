@@ -108,7 +108,11 @@ func TestReconnectAfterServerClose(t *testing.T) {
 			_ = conn.Close(websocket.StatusNormalClosure, "reconnect test")
 			return
 		}
-		<-r.Context().Done()
+		for {
+			if _, _, err := conn.Read(r.Context()); err != nil {
+				return
+			}
+		}
 	})
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
