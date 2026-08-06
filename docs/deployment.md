@@ -11,8 +11,8 @@ Edit `apps/api/wrangler.jsonc`:
 
 1. Set `TUNNEL_DOMAIN=makarima.xyz`, `PREVIEW_DOMAIN=preview.makarima.xyz`, `CUSTOM_DOMAIN_CNAME=cname.makarima.xyz`, and replace `WORKOS_CLIENT_ID` with the production application Client ID. The Worker derives the token issuer as `https://api.workos.com/user_management/<WORKOS_CLIENT_ID>`.
 2. Review request, response, pending-request, timeout, and heartbeat limits.
-3. Replace the placeholder route comments with routes for the base and wildcard
-   hostnames appropriate to your zone.
+3. Review the configured base, API, custom-domain, and wildcard routes for your
+   zone before deploying.
 4. Keep `DEV_ROUTING=false`, leave `AUTH_MODE` unset, and never configure
    `DEV_AUTH_SECRET` in production.
 

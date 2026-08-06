@@ -1,5 +1,8 @@
 # Security and optimization review
 
+> Backlog audit. Findings are historical recommendations; verify against the
+> current implementation before scheduling or closing work.
+
 Code review of the API Worker, Durable Objects, shared core, dashboard, and Go
 agent as of 2026-08-02. Ordered by impact. File references point at the code in
 question.

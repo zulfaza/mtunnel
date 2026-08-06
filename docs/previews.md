@@ -3,7 +3,7 @@
 `mt preview <path>` uploads one file from the CLI, stores it in R2,
 and serves it publicly at `https://preview.makarima.xyz/<id>`. Dedicated host,
 ~100 MiB per-file cap, TTL with cron cleanup. This document is the feature
-reference; it was written as the implementation plan and matches what shipped.
+reference.
 
 Uploads are plain HTTPS to the Worker API. The tunnel WebSocket protocol is
 untouched.
@@ -144,23 +144,7 @@ Vars: `PREVIEW_DOMAIN`, `MAX_PREVIEW_FILE_BYTES`, `PREVIEW_TTL_SECONDS`
 - `apps/cli/cmd/tunnel/preview_test.go`: manifest building, path
   validation, error output; upload flow against an httptest server.
 
-## Docs to update when implementing
-
-- `architecture.md` and `plan.md` currently state there is no R2 — revise the
-  "State and bounds" section: tunnel traffic stays unpersisted; previews are
-  the single R2 use case.
-- `deployment.md`: create the R2 bucket, note the cron trigger, no DNS changes
-  needed.
-- `docs/analytics.md`: new events.
-
-## Rollout order
-
-1. wrangler.jsonc binding + vars + cron, env.ts, migration, access.ts limits.
-2. Edge API + serving + scheduled handler, with tests.
-3. CLI command with tests.
-4. Docs.
-
-## Visibility (v2)
+## Visibility
 
 Every preview has a visibility, manageable from the CLI (`--visibility`/
 `--code` on create, `mt preview visibility <id> <value>` to change) and from

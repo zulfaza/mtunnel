@@ -1,5 +1,8 @@
 # Security & Optimization Review
 
+> Backlog audit. Findings are historical recommendations; verify against the
+> current implementation before scheduling or closing work.
+
 Review of the mtunnel monorepo (API Worker, dashboard, `@tunnel/core`, Go CLI).
 Scoped to the intended single-owner development-tunnel threat model documented in
 [security.md](./security.md). Findings are rated by impact, not by CVSS.

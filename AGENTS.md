@@ -12,11 +12,13 @@
 
 ## Before commit
 
-- Run `pnpm format` before every commit.
+- Run `pnpm format:write`, then `pnpm format`, before every commit.
 
 ## Terminal and Agent First
 
-This application is terminal-first and agent-first. Design the terminal UI so agents can use it easily, with clear, predictable output and interaction flows. Every application interaction and capability must be available through the terminal; do not require a graphical interface to complete any workflow.
+This application is terminal-first and agent-first. Keep CLI workflows clear,
+predictable, and complete for agents. The dashboard may provide a complementary
+browser UI, but core workflows must remain available through the terminal.
 
 ## Core Priorities
 

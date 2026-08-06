@@ -49,8 +49,9 @@ forwarding metadata and overwrites cache headers on every proxied response.
 
 ## Resource controls
 
-Defaults are 32 pending requests per tunnel, 50 MiB request bodies, 100 MiB
+Code defaults are 32 pending requests per tunnel, 50 MiB request bodies, 100 MiB
 response bodies, 256 KiB frames, and a 30-second request/response-idle timeout.
+The production Worker currently configures 100 pending requests.
 Excess work fails explicitly. Review these values before deployment; increasing
 them raises per-object memory and abuse exposure.
 
