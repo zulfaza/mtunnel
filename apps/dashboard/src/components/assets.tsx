@@ -1,14 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Copy, ExternalLink, KeyRound, Trash2 } from "lucide-react";
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { Fragment, useCallback, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { Schemas } from "@tunnel/core";
 import { formatBytes, formatExpiry } from "../lib/preview-format.js";
 import { groupPreviews } from "../lib/preview-groups.js";
@@ -59,11 +51,6 @@ export function AssetsPage({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const directoryInput = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    directoryInput.current?.setAttribute("webkitdirectory", "");
-  }, []);
 
   const fail = useCallback(
     (cause: unknown): void => {
@@ -98,11 +85,11 @@ export function AssetsPage({
     }
   };
 
-  const uploadSelectedFiles = (selectedFiles: readonly File[]): void => {
-    if (selectedFiles.length === 0) return;
+  const uploadSelectedFile = (file: File | undefined): void => {
+    if (file === undefined) return;
     setUploading(true);
     setError(null);
-    void uploadPreviewFiles(selectedFiles)
+    void uploadPreviewFile(file)
       .then((created) =>
         setPreviews((current) => (current === null ? [created] : [created, ...current])),
       )
@@ -112,14 +99,7 @@ export function AssetsPage({
 
   const upload = (event: FormEvent): void => {
     event.preventDefault();
-    uploadSelectedFiles([
-      ...(fileInput.current?.files === null || fileInput.current?.files === undefined
-        ? []
-        : [...fileInput.current.files]),
-      ...(directoryInput.current?.files === null || directoryInput.current?.files === undefined
-        ? []
-        : [...directoryInput.current.files]),
-    ]);
+    uploadSelectedFile(fileInput.current?.files?.[0]);
   };
 
   const removePreview = async (): Promise<void> => {
@@ -167,16 +147,8 @@ export function AssetsPage({
         <form className="hidden" onSubmit={upload}>
           <Input
             id="asset-files"
-            multiple
-            onChange={() => uploadSelectedFiles([...(fileInput.current?.files ?? [])])}
+            onChange={() => uploadSelectedFile(fileInput.current?.files?.[0])}
             ref={fileInput}
-            type="file"
-          />
-          <Input
-            id="asset-directory"
-            multiple
-            onChange={() => uploadSelectedFiles([...(directoryInput.current?.files ?? [])])}
-            ref={directoryInput}
             type="file"
           />
         </form>
@@ -357,28 +329,23 @@ function DeletePreviewDialog({
   );
 }
 
-async function uploadPreviewFiles(files: readonly File[]): Promise<Preview> {
-  const manifest = await Promise.all(
-    files.map(async (file) => ({
-      path: file.webkitRelativePath || file.name,
+async function uploadPreviewFile(file: File): Promise<Preview> {
+  const name = file.name;
+  const manifest = [
+    {
+      path: name,
       size: file.size,
       contentType: file.type || "application/octet-stream",
       sha256: await fileHash(file),
-    })),
-  );
-  const name = files[0]?.webkitRelativePath.split("/")[0] || files[0]?.name || "preview";
+    },
+  ];
   const created = await createPreview({ data: { name, files: manifest } });
   const previewId = created.id;
-  await Promise.all(
-    files.map(async (file) => {
-      const path = file.webkitRelativePath || file.name;
-      const response = await fetch(`/assets/upload/${encodePath(previewId)}/${encodePath(path)}`, {
-        method: "PUT",
-        body: file,
-      });
-      if (!response.ok) throw new Error(`Upload failed for ${path}.`);
-    }),
-  );
+  const response = await fetch(`/assets/upload/${encodePath(previewId)}/${encodePath(name)}`, {
+    method: "PUT",
+    body: file,
+  });
+  if (!response.ok) throw new Error(`Upload failed for ${name}.`);
   return created;
 }
 

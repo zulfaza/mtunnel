@@ -91,6 +91,9 @@ const PreviewRowSchema = Schema.Struct({
   repo_name: Schema.NullOr(Schema.String),
 });
 const PreviewUploadRowSchema = Schema.Struct({
+  organization_id: Schema.String,
+  name: Schema.String,
+  version: Schema.Number,
   manifest: Schema.String,
   expires_at: Schema.Number,
 });
@@ -106,6 +109,7 @@ export async function putPreviewObject(
   size: number,
   contentType: string,
   sha256: string,
+  version: number,
 ): Promise<boolean> {
   let bytes = 0;
   let exceeded = false;
@@ -128,6 +132,7 @@ export async function putPreviewObject(
   try {
     await bucket.put(key, fixedLength.readable, {
       httpMetadata: { contentType },
+      customMetadata: { version: String(version) },
       sha256,
     });
     await transfer;
@@ -142,6 +147,14 @@ export async function putPreviewObject(
   if (bytes === size) return true;
   await bucket.delete(key);
   return false;
+}
+
+function previewObjectComponent(value: string): string {
+  return encodeURIComponent(value);
+}
+
+export function previewObjectKey(organizationId: string, name: string, id: string): string {
+  return `${previewObjectComponent(organizationId)}/${previewObjectComponent(name)}/${id}`;
 }
 
 export function previewId(): string {
@@ -250,16 +263,24 @@ export const previewsLayer = Layer.effect(
     const bucket = yield* PreviewBucket;
     const access = yield* AccessLimits;
     const config = yield* CoreConfig;
-    const deletePrefix = Effect.fn("previews.delete_prefix")(function* (id: string) {
-      let cursor: string | undefined;
-      do {
-        const page = yield* Effect.promise(() =>
-          bucket.list(cursor === undefined ? { prefix: `${id}/` } : { prefix: `${id}/`, cursor }),
-        );
-        if (page.objects.length > 0)
-          yield* Effect.promise(() => bucket.delete(page.objects.map((object) => object.key)));
-        cursor = page.truncated ? page.cursor : undefined;
-      } while (cursor !== undefined);
+    const deletePrefix = Effect.fn("previews.delete_prefix")(function* (
+      organizationId: string,
+      name: string,
+      id: string,
+    ) {
+      const key = previewObjectKey(organizationId, name, id);
+      yield* Effect.promise(() => bucket.delete(key));
+      for (const prefix of [`${key}/`, `${id}/`]) {
+        let cursor: string | undefined;
+        do {
+          const page = yield* Effect.promise(() =>
+            bucket.list(cursor === undefined ? { prefix } : { prefix, cursor }),
+          );
+          if (page.objects.length > 0)
+            yield* Effect.promise(() => bucket.delete(page.objects.map((object) => object.key)));
+          cursor = page.truncated ? page.cursor : undefined;
+        } while (cursor !== undefined);
+      }
     });
     const visibilityHash = Effect.fn("previews.visibility_hash")(function* (
       visibility: PreviewVisibility | undefined,
@@ -315,18 +336,25 @@ export const previewsLayer = Layer.effect(
       const decodedRequest = decodePreviewCreateRequest(input.request);
       if (decodedRequest._tag === "None") return yield* Effect.fail(new BadRequestError({}));
       const request = decodedRequest.value;
+      const file = request.files[0];
+      if (
+        request.files.length !== 1 ||
+        file === undefined ||
+        file.path.includes("/") ||
+        file.path.includes("\\") ||
+        request.name.includes("/") ||
+        request.name.includes("\\")
+      )
+        return yield* Effect.fail(new BadRequestError({}));
       const visibility = yield* visibilityHash(request.visibility, request.accessCode);
       const limits = limitsWithOverrides(
         yield* access.limitsForOrganization(input.organizationId),
         config,
       );
-      const paths = new Set(request.files.map((file) => file.path));
       const totalBytes = request.files.reduce((total, file) => total + file.size, 0);
       if (
         !Number.isSafeInteger(totalBytes) ||
-        request.files.some((file) => file.size > limits.maximumPreviewFileBytes) ||
-        paths.size !== request.files.length ||
-        (limits.maximumPreviewFiles !== null && request.files.length > limits.maximumPreviewFiles)
+        request.files.some((entry) => entry.size > limits.maximumPreviewFileBytes)
       )
         return yield* Effect.fail(new PreviewLimitError({}));
       const repoHost = request.repoHost ?? null;
@@ -450,7 +478,7 @@ export const previewsLayer = Layer.effect(
       const value = yield* Effect.promise(() =>
         database
           .prepare(
-            "SELECT manifest, expires_at FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
+            "SELECT organization_id, name, version, manifest, expires_at FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
           )
           .bind(input.id, input.organizationId, input.userId)
           .first(),
@@ -466,11 +494,12 @@ export const previewsLayer = Layer.effect(
       const exactSize = yield* Effect.promise(() =>
         putPreviewObject(
           bucket,
-          `${input.id}/${input.path}`,
+          previewObjectKey(decoded.value.organization_id, decoded.value.name, input.id),
           input.body,
           file.size,
           file.contentType,
           file.sha256,
+          decoded.value.version,
         ),
       );
       if (!exactSize) return yield* Effect.fail(new BadRequestError({}));
@@ -584,7 +613,7 @@ export const previewsLayer = Layer.effect(
       );
       const decoded = decodePreviewRow(value);
       if (decoded._tag === "None") return yield* Effect.fail(new NotFoundError({}));
-      yield* deletePrefix(input.id);
+      yield* deletePrefix(input.organizationId, decoded.value.name, input.id);
       yield* Effect.promise(() =>
         database.prepare("DELETE FROM previews WHERE id = ?").bind(input.id).run(),
       );
@@ -593,12 +622,12 @@ export const previewsLayer = Layer.effect(
     const cleanupExpired = Effect.fn("previews.cleanup_expired")(function* () {
       const expired = yield* Effect.promise(() =>
         database
-          .prepare("SELECT id FROM previews WHERE expires_at < ? LIMIT 100")
+          .prepare("SELECT id, organization_id, name FROM previews WHERE expires_at < ? LIMIT 100")
           .bind(Date.now())
-          .all<{ id: string }>(),
+          .all<{ id: string; organization_id: string; name: string }>(),
       );
       for (const row of expired.results) {
-        yield* deletePrefix(row.id);
+        yield* deletePrefix(row.organization_id, row.name, row.id);
         yield* Effect.promise(() =>
           database.prepare("DELETE FROM previews WHERE id = ?").bind(row.id).run(),
         );

@@ -150,16 +150,23 @@ function accessCodeStatements(
   ];
 }
 
-async function deletePrefix(env: Env, id: string): Promise<void> {
-  let cursor: string | undefined;
-  do {
-    const page = await env.PREVIEWS.list(
-      cursor === undefined ? { prefix: `${id}/` } : { prefix: `${id}/`, cursor },
-    );
-    if (page.objects.length > 0)
-      await env.PREVIEWS.delete(page.objects.map((object) => object.key));
-    cursor = page.truncated ? page.cursor : undefined;
-  } while (cursor !== undefined);
+async function deletePrefix(
+  env: Env,
+  organizationId: string,
+  name: string,
+  id: string,
+): Promise<void> {
+  const key = Previews.previewObjectKey(organizationId, name, id);
+  await env.PREVIEWS.delete(key);
+  for (const prefix of [`${key}/`, `${id}/`]) {
+    let cursor: string | undefined;
+    do {
+      const page = await env.PREVIEWS.list(cursor === undefined ? { prefix } : { prefix, cursor });
+      if (page.objects.length > 0)
+        await env.PREVIEWS.delete(page.objects.map((object) => object.key));
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor !== undefined);
+  }
 }
 
 export async function handlePreviewCreate(request: Request, env: Env): Promise<Response> {
@@ -178,29 +185,25 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     typeof body.name !== "string" ||
     body.name === "" ||
     body.name.length > 255 ||
+    body.name.includes("/") ||
+    body.name.includes("\\") ||
     !Array.isArray(body.files) ||
+    body.files.length !== 1 ||
     !body.files.every(validFile) ||
     !optionalPreviewMetadata(body) ||
     !optionalPreviewGroup(body)
   )
     return jsonError(400, "bad_request");
+  const firstFile = body.files[0];
+  if (firstFile === undefined || firstFile.path.includes("/") || firstFile.path.includes("\\"))
+    return jsonError(400, "bad_request");
   const visibilityInput = await visibilityFromBody(body, env.AUTH_SECRET);
   if (visibilityInput === null) return jsonError(400, "bad_request");
   const files = body.files;
-  const paths = new Set(files.map((file) => file.path));
   const totalBytes = files.reduce((total, file) => total + file.size, 0);
   const limits = await limitsForOrganization(env, auth.organizationId);
   const fileLimit = Number(env.MAX_PREVIEW_FILE_BYTES ?? limits.maximumPreviewFileBytes);
-  const countLimit =
-    env.MAX_PREVIEW_FILES === undefined
-      ? limits.maximumPreviewFiles
-      : Number(env.MAX_PREVIEW_FILES);
-  if (
-    !Number.isSafeInteger(totalBytes) ||
-    files.some((file) => file.size > fileLimit) ||
-    paths.size !== files.length ||
-    (countLimit !== null && files.length > countLimit)
-  )
+  if (!Number.isSafeInteger(totalBytes) || files.some((file) => file.size > fileLimit))
     return jsonError(413, "preview_limit_exceeded");
   const current = await env.DOMAINS.prepare(
     "SELECT COUNT(*) AS count, COALESCE(SUM(total_bytes), 0) AS total FROM previews WHERE organization_id = ? AND expires_at > ?",
@@ -330,10 +333,16 @@ export async function handlePreviewUpload(
   const auth = await authenticateUser(request, env);
   if (!auth.ok) return authErrorResponse(auth);
   const row = await env.DOMAINS.prepare(
-    "SELECT manifest, expires_at FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
+    "SELECT organization_id, name, version, manifest, expires_at FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
   )
     .bind(id, auth.organizationId, auth.userId)
-    .first<{ manifest: string; expires_at: number }>();
+    .first<{
+      organization_id: string;
+      name: string;
+      version: number;
+      manifest: string;
+      expires_at: number;
+    }>();
   if (row === null || row.expires_at <= Date.now()) return jsonError(404, "not_found");
   let files: PreviewFile[];
   try {
@@ -353,11 +362,12 @@ export async function handlePreviewUpload(
     return jsonError(400, "bad_request");
   const exactSize = await Previews.putPreviewObject(
     env.PREVIEWS,
-    `${id}/${path}`,
+    Previews.previewObjectKey(row.organization_id, row.name, id),
     request.body,
     file.size,
     file.contentType,
     file.sha256,
+    row.version,
   );
   if (!exactSize) return jsonError(400, "bad_request");
   return new Response(null, { status: 204 });
@@ -389,7 +399,7 @@ export async function handlePreviewDelete(
     .bind(id, auth.organizationId, auth.userId)
     .first<PreviewRow>();
   if (row === null) return jsonError(404, "not_found");
-  await deletePrefix(env, id);
+  await deletePrefix(env, auth.organizationId, row.name, id);
   await env.DOMAINS.prepare("DELETE FROM previews WHERE id = ?").bind(id).run();
   return jsonResponse(previewResponse(row, env.PREVIEW_DOMAIN));
 }
