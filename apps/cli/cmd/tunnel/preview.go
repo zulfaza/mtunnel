@@ -14,9 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
-	"sync"
 	"text/tabwriter"
 	"time"
 	"unicode/utf8"
@@ -134,40 +132,15 @@ func buildPreviewManifest(input string) (string, []previewFile, error) {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return "", nil, fmt.Errorf("preview path must not be a symlink")
 	}
+	if info.IsDir() {
+		return "", nil, fmt.Errorf("preview path must be a file")
+	}
 	name := filepath.Base(filepath.Clean(input))
-	files := make([]previewFile, 0)
-	if !info.IsDir() {
-		file, fileErr := manifestFile(filepath.Dir(input), input)
-		if fileErr != nil {
-			return "", nil, fileErr
-		}
-		return name, []previewFile{file}, nil
+	file, fileErr := manifestFile(filepath.Dir(input), input)
+	if fileErr != nil {
+		return "", nil, fileErr
 	}
-	err = filepath.WalkDir(input, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		file, fileErr := manifestFile(input, path)
-		if fileErr != nil {
-			return fileErr
-		}
-		files = append(files, file)
-		return nil
-	})
-	if err != nil {
-		return "", nil, err
-	}
-	sort.Slice(files, func(left, right int) bool { return files[left].Path < files[right].Path })
-	return name, files, nil
+	return name, []previewFile{file}, nil
 }
 
 func collectPreviewRepoMetadata(cwd string) previewRepoMetadata {
@@ -357,32 +330,15 @@ func uploadPreviewFile(o *rootOptions, id string, file previewFile) error {
 }
 
 func uploadPreview(o *rootOptions, id string, files []previewFile) error {
-	jobs := make(chan previewFile)
-	errors := make(chan error, len(files))
-	var group sync.WaitGroup
-	for worker := 0; worker < 4; worker++ {
-		group.Add(1)
-		go func() {
-			defer group.Done()
-			for file := range jobs {
-				if err := uploadPreviewFile(o, id, file); err != nil {
-					errors <- err
-					continue
-				}
-				if o.logger != nil {
-					o.logger.Info("preview uploaded", "file", file.Path, "bytes", file.Size)
-				}
-			}
-		}()
+	if len(files) != 1 {
+		return fmt.Errorf("preview requires exactly one file")
 	}
-	for _, file := range files {
-		jobs <- file
-	}
-	close(jobs)
-	group.Wait()
-	close(errors)
-	for err := range errors {
+	file := files[0]
+	if err := uploadPreviewFile(o, id, file); err != nil {
 		return err
+	}
+	if o.logger != nil {
+		o.logger.Info("preview uploaded", "file", file.Path, "bytes", file.Size)
 	}
 	return nil
 }

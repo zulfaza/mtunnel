@@ -16,6 +16,38 @@ interface PreviewGroupBuilder {
   readonly files: Map<string, Preview>;
 }
 
+type PreviewGroupIdentity =
+  | { readonly _tag: "custom"; readonly key: string; readonly name: string }
+  | {
+      readonly _tag: "repository";
+      readonly key: string;
+      readonly name: string;
+      readonly href: string | null;
+    }
+  | { readonly _tag: "none" };
+
+function previewGroupIdentity(preview: Preview): PreviewGroupIdentity {
+  if (preview.group !== null && preview.group !== "")
+    return { _tag: "custom", key: `group:${preview.group}`, name: preview.group };
+  if (
+    preview.repoOrg !== null &&
+    preview.repoOrg !== "" &&
+    preview.repoName !== null &&
+    preview.repoName !== ""
+  ) {
+    return {
+      _tag: "repository",
+      key: `repository:${preview.repoHost ?? ""}/${preview.repoOrg}/${preview.repoName}`,
+      name: preview.repoName,
+      href:
+        preview.repoHost === null
+          ? null
+          : `https://${preview.repoHost}/${preview.repoOrg}/${preview.repoName}`,
+    };
+  }
+  return { _tag: "none" };
+}
+
 function newerPreview(left: Preview, right: Preview): Preview {
   if (left.createdAt !== right.createdAt) return left.createdAt > right.createdAt ? left : right;
   return left.version >= right.version ? left : right;
@@ -24,15 +56,8 @@ function newerPreview(left: Preview, right: Preview): Preview {
 export function groupPreviews(previews: readonly Preview[]): readonly PreviewGroup[] {
   const groups = new Map<string, PreviewGroupBuilder>();
   for (const preview of previews) {
-    const hasRepository =
-      preview.repoOrg !== null &&
-      preview.repoOrg !== "" &&
-      preview.repoName !== null &&
-      preview.repoName !== "";
-    const repositoryKey = hasRepository
-      ? `${preview.repoHost ?? ""}/${preview.repoOrg}/${preview.repoName}`
-      : "";
-    const key = repositoryKey;
+    const identity = previewGroupIdentity(preview);
+    const key = identity._tag === "none" ? "none" : identity.key;
     const existing = groups.get(key);
     if (existing !== undefined) {
       const current = existing.files.get(preview.name);
@@ -44,11 +69,8 @@ export function groupPreviews(previews: readonly Preview[]): readonly PreviewGro
     }
     groups.set(key, {
       key,
-      repositoryName: hasRepository ? preview.repoName : "No repository",
-      href:
-        hasRepository && preview.repoHost !== null
-          ? `https://${preview.repoHost}/${preview.repoOrg}/${preview.repoName}`
-          : null,
+      repositoryName: identity._tag === "none" ? "None" : identity.name,
+      href: identity._tag === "repository" ? identity.href : null,
       files: new Map([[preview.name, preview]]),
     });
   }

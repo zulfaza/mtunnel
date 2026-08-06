@@ -1,4 +1,5 @@
 import type { Env } from "../../env.js";
+import { Previews } from "@tunnel/core";
 import {
   DOCUMENT_ACCESS_GRANT_TTL_MS,
   PREVIEW_ACCESS_SESSION_COOKIE,
@@ -37,6 +38,8 @@ function requestedRange(value: string | null): R2Range | undefined {
 }
 
 interface PreviewAccessRow {
+  readonly organization_id: string;
+  readonly name: string;
   readonly expires_at: number;
   readonly visibility: string;
   readonly document_id: string | null;
@@ -46,6 +49,21 @@ interface PreviewAccessRow {
 interface AccessCodeRow {
   readonly id: string;
   readonly code_hash: string;
+}
+
+function previewPaths(manifest: string): readonly string[] | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(manifest);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(value)) return null;
+  const paths = value.flatMap((file): readonly string[] => {
+    if (typeof file !== "object" || file === null || !("path" in file)) return [];
+    return typeof file.path === "string" ? [file.path] : [];
+  });
+  return paths.length === value.length ? paths : null;
 }
 
 async function sessionCredential(
@@ -178,7 +196,7 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
   if (match?.[1] === undefined) return siteNotFound();
   const id = match[1];
   const preview = await env.DOMAINS.prepare(
-    "SELECT expires_at, visibility, document_id, manifest FROM previews WHERE id = ?",
+    "SELECT organization_id, name, expires_at, visibility, document_id, manifest FROM previews WHERE id = ?",
   )
     .bind(id)
     .first<PreviewAccessRow>();
@@ -202,20 +220,10 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
       return previewCodePage(url.searchParams.get("access") === "invalid");
     }
   } else if (request.method === "POST") return siteNotFound();
+  const paths = previewPaths(preview.manifest);
+  if (paths === null) return siteNotFound();
   let path = match[2];
   if (path === undefined || path === "") {
-    let manifest: unknown;
-    try {
-      manifest = JSON.parse(preview.manifest);
-    } catch {
-      return siteNotFound();
-    }
-    if (!Array.isArray(manifest)) return siteNotFound();
-    const paths = manifest.flatMap((file): string[] => {
-      if (typeof file !== "object" || file === null || !("path" in file)) return [];
-      const value = file.path;
-      return typeof value === "string" ? [value] : [];
-    });
     path = paths.includes("index.html") ? "index.html" : paths.length === 1 ? paths[0] : undefined;
     if (path === undefined) return siteNotFound();
   }
@@ -232,11 +240,14 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
     decoded.split("/").includes("..")
   )
     return siteNotFound();
+  if (!paths.includes(decoded)) return siteNotFound();
   const range = requestedRange(request.headers.get("range"));
-  const object = await env.PREVIEWS.get(
-    `${id}/${decoded}`,
-    range === undefined ? undefined : { range },
-  );
+  const getOptions = range === undefined ? undefined : { range };
+  const key = Previews.previewObjectKey(preview.organization_id, preview.name, id);
+  const object =
+    (await env.PREVIEWS.get(key, getOptions)) ??
+    (await env.PREVIEWS.get(`${key}/${decoded}`, getOptions)) ??
+    (await env.PREVIEWS.get(`${id}/${decoded}`, getOptions));
   if (object === null) return siteNotFound();
   const responseHeaders = headers(object.httpMetadata?.contentType, object.httpEtag, cacheControl);
   if (

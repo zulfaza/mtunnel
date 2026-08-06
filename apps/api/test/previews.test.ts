@@ -38,6 +38,25 @@ async function createPreview(): Promise<CreatedPreview> {
 }
 
 describe("previews", () => {
+  it("rejects directory and multi-file manifests", async () => {
+    const file = {
+      path: "index.html",
+      size: 5,
+      contentType: "text/html",
+      sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+    };
+    const create = async (files: readonly (typeof file)[]) =>
+      SELF.fetch("http://worker.test/api/v1/previews", {
+        method: "POST",
+        headers: { authorization: "Bearer development-token", "content-type": "application/json" },
+        body: JSON.stringify({ name: "site", files }),
+      });
+    const directory = await create([{ ...file, path: "site/index.html" }]);
+    const multiple = await create([file, { ...file, path: "app.html" }]);
+    expect(directory.status).toBe(400);
+    expect(multiple.status).toBe(400);
+  });
+
   it("versions previews for the same repository and name", async () => {
     const body = {
       name: "site.html",
@@ -67,6 +86,17 @@ describe("previews", () => {
     expect(firstValue.version).toBe(1);
     expect(secondValue.version).toBe(2);
     expect(secondValue.url).toBe(`https://preview.worker.test/${secondValue.id}`);
+    const upload = await SELF.fetch(
+      `http://worker.test/api/v1/previews/${secondValue.id}/files/site.html`,
+      {
+        method: "PUT",
+        headers: { authorization: "Bearer development-token", "content-length": "5" },
+        body: "hello",
+      },
+    );
+    expect(upload.status).toBe(204);
+    const stored = await env.PREVIEWS.get(`development-organization/site.html/${secondValue.id}`);
+    expect(stored?.customMetadata).toEqual({ version: "2" });
   });
 
   it("groups custom previews while versioning each name independently", async () => {
@@ -134,6 +164,9 @@ describe("previews", () => {
       },
     );
     expect(upload.status).toBe(204);
+    const stored = await env.PREVIEWS.get(`development-organization/site/${preview.id}`);
+    expect(stored?.customMetadata).toEqual({ version: "1" });
+    expect(await env.PREVIEWS.get(`${preview.id}/index.html`)).toBeNull();
     const served = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`, {
       headers: { range: "bytes=1-3" },
     });
@@ -315,9 +348,13 @@ describe("previews", () => {
     )
       .bind(id, "org", "user", "old", "[]", 1, 1, Date.now() - 2_000, Date.now() - 1_000)
       .run();
-    await env.PREVIEWS.put(`${id}/file.txt`, "old");
+    await env.PREVIEWS.put(`org/old/${id}`, "old");
+    await env.PREVIEWS.put(`org/old/${id}/file.txt`, "nested");
+    await env.PREVIEWS.put(`${id}/legacy.txt`, "legacy");
     await cleanupExpiredPreviews(env);
-    expect(await env.PREVIEWS.get(`${id}/file.txt`)).toBeNull();
+    expect(await env.PREVIEWS.get(`org/old/${id}`)).toBeNull();
+    expect(await env.PREVIEWS.get(`org/old/${id}/file.txt`)).toBeNull();
+    expect(await env.PREVIEWS.get(`${id}/legacy.txt`)).toBeNull();
     expect(
       await env.DOMAINS.prepare("SELECT id FROM previews WHERE id = ?").bind(id).first(),
     ).toBeNull();

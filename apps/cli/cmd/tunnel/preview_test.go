@@ -36,31 +36,10 @@ func TestPreviewOutputURLUsesVersionRoot(t *testing.T) {
 	}
 }
 
-func TestBuildPreviewManifestDirectory(t *testing.T) {
+func TestBuildPreviewManifestRejectsDirectory(t *testing.T) {
 	directory := t.TempDir()
-	if err := os.Mkdir(filepath.Join(directory, "assets"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "index.html"), []byte("<h1>Hello</h1>"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "assets", "app.js"), []byte("console.log('hello')"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	name, files, err := buildPreviewManifest(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if name != filepath.Base(directory) || len(files) != 2 {
-		t.Fatalf("unexpected manifest: %q %#v", name, files)
-	}
-	if files[0].Path != "assets/app.js" || files[1].Path != "index.html" {
-		t.Fatalf("unexpected paths: %#v", files)
-	}
-	for _, file := range files {
-		if len(file.SHA256) != 64 || file.ContentType == "" {
-			t.Fatalf("invalid file metadata: %#v", file)
-		}
+	if _, _, err := buildPreviewManifest(directory); err == nil || !strings.Contains(err.Error(), "must be a file") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

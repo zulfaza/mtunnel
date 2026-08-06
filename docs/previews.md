@@ -1,6 +1,6 @@
 # Previews (upload HTML / artifacts / video from the CLI)
 
-`mt preview <path>` uploads a file or directory from the CLI, stores it in R2,
+`mt preview <path>` uploads one file from the CLI, stores it in R2,
 and serves it publicly at `https://preview.makarima.xyz/<id>`. Dedicated host,
 ~100 MiB per-file cap, TTL with cron cleanup. This document is the feature
 reference; it was written as the implementation plan and matches what shipped.
@@ -11,9 +11,6 @@ untouched.
 ## UX
 
 ```console
-$ mt preview ./dist                       # directory (static site / artifacts)
-https://preview.makarima.xyz/p7w3k9...   (24 files, expires in 7 days)
-
 $ mt preview demo.mp4                     # single file (video, HTML, ...)
 https://preview.makarima.xyz/p7w3k9...
 
@@ -28,24 +25,12 @@ $ mt preview visibility <id> private                   # change later
 ## Storage and metadata
 
 - New R2 binding `PREVIEWS` (bucket `mtunnel-previews`). Object keys:
-  `<preview-id>/<relative-file-path>`. Content stored only in R2.
-- New D1 migration `0005_previews.sql` on the existing `DOMAINS` database:
-
-```sql
-CREATE TABLE previews (
-  id TEXT PRIMARY KEY,
-  organization_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  name TEXT NOT NULL,               -- basename of the uploaded path
-  manifest TEXT NOT NULL,           -- JSON: [{path, size, contentType, sha256}]
-  total_bytes INTEGER NOT NULL,
-  file_count INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL
-);
-CREATE INDEX previews_organization_id ON previews(organization_id);
-CREATE INDEX previews_expires_at ON previews(expires_at);
-```
+  `<organization-id>/<preview-name>/<preview-id>`. Each
+  object stores the preview version in custom metadata. Content stored only in R2.
+- Preview metadata lives in migrations `0005_previews.sql` through
+  `0010_preview_group.sql` on the existing `DOMAINS` database. Later migrations
+  add visibility, versions, stable document IDs, access records, and groups;
+  use the migrations as the canonical schema definition.
 
 - Preview ID: 128-bit random, base32-lowercase (unguessable; public previews
   are public-by-URL, no per-request auth on the serving side).
@@ -79,11 +64,7 @@ sha256}]}` plus optional `visibility` (`public` default | `private` | `code`)
 {contentType}, sha256})` (R2 verifies the checksum). No buffering in Worker
   memory.
 - `GET /api/v1/previews` — list the organization's previews.
-- `DELETE /api/v1/previews/:id` — delete R2 objects by prefix `<id>/`, then the
-  D1 row.
-
-Register the routes in `routes/(api)/index.ts` and add `preview_created` /
-`preview_deleted` to `trackedApiEvent`.
+- `DELETE /api/v1/previews/:id` — delete the R2 object, then the D1 row.
 
 ## Serving (dedicated host)
 
@@ -101,8 +82,7 @@ New `routes/(preview)/serve.ts`:
 - `GET /<id>/<path>` → `env.PREVIEWS.get(key, {range})`. Honor `Range` requests
   (required for video seeking); return 206 with `Content-Range`. Pass through
   the object's stored Content-Type and ETag.
-- `GET /<id>/` → serve `<id>/index.html` if present; otherwise render a minimal
-  HTML listing from an R2 prefix list (useful for artifact directories).
+- `GET /<id>/` → serve the uploaded file.
 - Unknown preview/file → the existing `siteNotFound()` page.
 - Headers: `x-content-type-options: nosniff`, short `cache-control:
 public, max-age=60` with ETag revalidation. Do not use the Cache API.
@@ -130,26 +110,25 @@ overstay to ~1 hour.
 | maximumPreviews                 | 20         | null         |
 | maximumPreviewBytes (aggregate) | 2 GiB      | null         |
 | maximumPreviewFileBytes         | 100 MiB    | 100 MiB      |
-| maximumPreviewFiles             | 500        | null         |
 | previewTTLSeconds               | 7 days     | 30 days      |
 
 The 100 MiB file cap sits safely under the Worker request-body limit; larger
 video needs R2 multipart upload (out of scope for v1).
 
-Vars: `PREVIEW_DOMAIN`, `MAX_PREVIEW_FILE_BYTES`, `MAX_PREVIEW_FILES`,
-`PREVIEW_TTL_SECONDS` (restricted defaults; unrestricted values in access.ts).
+Vars: `PREVIEW_DOMAIN`, `MAX_PREVIEW_FILE_BYTES`, `PREVIEW_TTL_SECONDS`
+(restricted defaults; unrestricted values in access.ts).
 
 ## CLI (`apps/cli/cmd/tunnel/preview.go`, follows domain.go)
 
 - Reuse `loadConfig` / `doAuthenticated`; same bearer + org header flow.
-- Walk the argument path (file or directory; skip symlinks and anything over
-  the file cap with a clear error). Content-Type via `mime.TypeByExtension`,
-  fallback `http.DetectContentType`. SHA-256 per file for the manifest.
-- `POST` the manifest, then `PUT` each file with 4 concurrent workers, one
+- Read the argument file; reject directories, symlinks, and anything over the
+  file cap with a clear error. Content-Type via `mime.TypeByExtension`,
+  fallback `http.DetectContentType`. SHA-256 the file for the manifest.
+- `POST` the manifest, then `PUT` the file with one
   retry on 5xx/network errors (idempotent: same key, same bytes). Stream with
   `os.Open` as the request body; set `Content-Length`.
-- Progress to stderr (agent-first: one log line per file via the existing
-  slog setup), final URL to stdout so `mt preview ./dist | pbcopy` works.
+- Progress to stderr (agent-first: one log line via the existing
+  slog setup), final URL to stdout so `mt preview demo.mp4 | pbcopy` works.
 - `list` prints a tabwriter table like `domain list`; `delete` mirrors
   `domain delete`.
 - `--group <name>` adds a custom dashboard group within the repository. Repeated
