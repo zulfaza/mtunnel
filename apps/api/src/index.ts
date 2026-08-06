@@ -23,7 +23,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     return handleApi(request, env, ctx, url);
   }
 
-  if (hostname === env.PREVIEW_DOMAIN.toLowerCase()) return servePreview(request, env, url);
+  if (hostname === env.PREVIEW_DOMAIN.toLowerCase()) {
+    return servePreview(request, env, url);
+  }
 
   const hostTunnelId = tunnelIdFromHost(request.headers.get("host"), env.TUNNEL_DOMAIN);
   if (hostTunnelId !== null)
@@ -66,6 +68,7 @@ async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise
 }
 
 export { RegistryDO, TunnelDO };
+
 async function scheduled(
   _controller: ScheduledController,
   env: Env,

@@ -53,6 +53,7 @@ export function isPreviewPath(value: string): boolean {
 
 export const PreviewView = Schema.Struct({
   id: Schema.String,
+  documentId: Schema.String,
   name: Schema.String,
   version: Schema.Number,
   url: Schema.String,

@@ -124,8 +124,13 @@ describe("previews", () => {
       }),
     });
     expect(created.status).toBe(201);
-    const preview = (await created.json()) as { id: string; visibility: string };
+    const preview = (await created.json()) as {
+      id: string;
+      documentId: string;
+      visibility: string;
+    };
     expect(preview.visibility).toBe("code");
+    expect(preview.documentId).toBe(preview.id);
     await SELF.fetch(`http://worker.test/api/v1/previews/${preview.id}/files/index.html`, {
       method: "PUT",
       headers: { authorization: "Bearer development-token", "content-length": "5" },
@@ -134,27 +139,103 @@ describe("previews", () => {
     const gated = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`);
     expect(gated.status).toBe(401);
     expect(await gated.text()).toContain("Access code required");
-    const rejected = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "code=wrong-code",
-    });
-    expect(rejected.status).toBe(401);
-    const unlocked = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "code=open-sesame%21",
-      redirect: "manual",
-    });
+    const unlocked = await SELF.fetch(
+      `http://preview.worker.test/${preview.id}/index.html?code=open-sesame%21`,
+      {
+        redirect: "manual",
+      },
+    );
     expect(unlocked.status).toBe(303);
+    expect(unlocked.headers.get("location")).toBe(
+      `http://preview.worker.test/${preview.id}/index.html`,
+    );
+    expect(unlocked.headers.get("referrer-policy")).toBe("no-referrer");
     const cookie = unlocked.headers.get("set-cookie");
-    expect(cookie).not.toBeNull();
+    expect(cookie).toContain("Max-Age=86400");
+    const rejectedReuse = await SELF.fetch(
+      `http://preview.worker.test/${preview.id}/index.html?code=open-sesame%21`,
+      {
+        redirect: "manual",
+      },
+    );
+    expect(rejectedReuse.status).toBe(303);
+    expect(rejectedReuse.headers.get("location")).toBe(
+      `http://preview.worker.test/${preview.id}/index.html?access=invalid`,
+    );
+    const reopened = await SELF.fetch(
+      `http://preview.worker.test/${preview.id}/index.html?code=open-sesame%21`,
+      {
+        headers: { cookie: cookie?.split(";")[0] ?? "" },
+        redirect: "manual",
+      },
+    );
+    expect(reopened.status).toBe(303);
+    expect(reopened.headers.get("location")).toBe(
+      `http://preview.worker.test/${preview.id}/index.html`,
+    );
     const served = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`, {
       headers: { cookie: cookie?.split(";")[0] ?? "" },
     });
     expect(served.status).toBe(200);
     expect(await served.text()).toBe("hello");
     expect(served.headers.get("cache-control")).toBe("private, no-store");
+    await env.DOMAINS.prepare(
+      "UPDATE preview_access_grants SET expires_at = ? WHERE document_id = ?",
+    )
+      .bind(Date.now() - 1, preview.documentId)
+      .run();
+    const expired = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`, {
+      headers: { cookie: cookie?.split(";")[0] ?? "" },
+    });
+    expect(expired.status).toBe(401);
+  });
+
+  it("shares a document grant across preview versions", async () => {
+    const create = (accessCode: string) =>
+      SELF.fetch("http://worker.test/api/v1/previews", {
+        method: "POST",
+        headers: { authorization: "Bearer development-token", "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "versioned-gate",
+          repoHost: "github.com",
+          repoOrg: "acme",
+          repoName: "versioned-gate",
+          visibility: "code",
+          accessCode,
+          files: [
+            {
+              path: "index.html",
+              size: 5,
+              contentType: "text/html",
+              sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+            },
+          ],
+        }),
+      });
+    const firstResponse = await create("first-device-code");
+    const first = (await firstResponse.json()) as { id: string; documentId: string };
+    const unlocked = await SELF.fetch(
+      `http://preview.worker.test/${first.id}/index.html?code=first-device-code`,
+      { redirect: "manual" },
+    );
+    const cookie = unlocked.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const secondResponse = await create("second-device-code");
+    const second = (await secondResponse.json()) as { id: string; documentId: string };
+    expect(second.documentId).toBe(first.documentId);
+    const uploaded = await SELF.fetch(
+      `http://worker.test/api/v1/previews/${second.id}/files/index.html`,
+      {
+        method: "PUT",
+        headers: { authorization: "Bearer development-token", "content-length": "5" },
+        body: "hello",
+      },
+    );
+    expect(uploaded.status).toBe(204);
+    const served = await SELF.fetch(`http://preview.worker.test/${second.id}/index.html`, {
+      headers: { cookie },
+      redirect: "manual",
+    });
+    expect(served.status).toBe(200);
   });
 
   it("updates preview visibility", async () => {

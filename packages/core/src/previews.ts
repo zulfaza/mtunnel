@@ -8,7 +8,12 @@ import {
   NotFoundError,
   PreviewLimitError,
 } from "./errors.js";
-import { hashAccessCode, isAccessCode, isPreviewVisibility } from "./preview-access.js";
+import {
+  accessCodeFingerprint,
+  hashAccessCode,
+  isAccessCode,
+  isPreviewVisibility,
+} from "./preview-access.js";
 import {
   PreviewCreateRequest,
   PreviewFile,
@@ -19,6 +24,7 @@ import {
 
 interface PreviewRow {
   readonly id: string;
+  readonly document_id: string;
   readonly name: string;
   readonly version: number;
   readonly total_bytes: number;
@@ -52,6 +58,7 @@ interface PreviewUploadInput extends PreviewIdentity {
 
 const PreviewRowSchema = Schema.Struct({
   id: Schema.String,
+  document_id: Schema.String,
   name: Schema.String,
   version: Schema.Number,
   total_bytes: Schema.Number,
@@ -140,6 +147,7 @@ export function previewId(): string {
 function response(row: PreviewRow, domain: string): PreviewView {
   return {
     id: row.id,
+    documentId: row.document_id,
     name: row.name,
     version: row.version,
     url: `https://${domain}/${row.id}`,
@@ -234,11 +242,43 @@ export const previewsLayer = Layer.effect(
         return {
           visibility: value,
           accessCodeHash: yield* Effect.promise(() => hashAccessCode(accessCode, authSecret)),
+          accessCodeFingerprint: yield* Effect.promise(() =>
+            accessCodeFingerprint(accessCode, authSecret),
+          ),
         };
       }
       if (accessCode !== undefined) return yield* Effect.fail(new BadRequestError({}));
-      return { visibility: value, accessCodeHash: null };
+      return { visibility: value, accessCodeHash: null, accessCodeFingerprint: null };
     });
+    const accessCodeStatements = (
+      documentId: string,
+      visibility: {
+        readonly accessCodeHash: string | null;
+        readonly accessCodeFingerprint: string | null;
+      },
+      now: number,
+    ): readonly D1PreparedStatement[] => {
+      if (visibility.accessCodeHash === null || visibility.accessCodeFingerprint === null)
+        return [];
+      return [
+        database
+          .prepare(
+            "UPDATE preview_access_codes SET used_at = ? WHERE document_id = ? AND used_at IS NULL",
+          )
+          .bind(now, documentId),
+        database
+          .prepare(
+            "INSERT INTO preview_access_codes (id, document_id, code_hash, code_fingerprint, created_at) VALUES (?, ?, ?, ?, ?)",
+          )
+          .bind(
+            crypto.randomUUID(),
+            documentId,
+            visibility.accessCodeHash,
+            visibility.accessCodeFingerprint,
+            now,
+          ),
+      ];
+    };
     const create = Effect.fn("previews.create")(function* (input: PreviewCreateInput) {
       const decodedRequest = decodePreviewCreateRequest(input.request);
       if (decodedRequest._tag === "None") return yield* Effect.fail(new BadRequestError({}));
@@ -263,10 +303,10 @@ export const previewsLayer = Layer.effect(
       const latestVersion = yield* Effect.promise(() =>
         database
           .prepare(
-            "SELECT COALESCE(MAX(version), 0) AS version FROM previews WHERE organization_id = ? AND name = ? AND repo_host IS ? AND repo_org IS ? AND repo_name IS ? AND expires_at > ?",
+            "SELECT version, document_id FROM previews WHERE organization_id = ? AND name = ? AND repo_host IS ? AND repo_org IS ? AND repo_name IS ? AND expires_at > ? ORDER BY version DESC LIMIT 1",
           )
           .bind(input.organizationId, request.name, repoHost, repoOrg, repoName, Date.now())
-          .first<{ version: number }>(),
+          .first<{ version: number; document_id: string | null }>(),
       );
       const current = yield* Effect.promise(() => {
         return database
@@ -283,8 +323,10 @@ export const previewsLayer = Layer.effect(
       )
         return yield* Effect.fail(new PreviewLimitError({}));
       const now = Date.now();
+      const id = previewId();
       const row: PreviewRow = {
-        id: previewId(),
+        id,
+        document_id: latestVersion?.document_id ?? id,
         name: request.name,
         version: (latestVersion?.version ?? 0) + 1,
         manifest: JSON.stringify(request.files),
@@ -297,29 +339,30 @@ export const previewsLayer = Layer.effect(
         repo_org: repoOrg,
         repo_name: repoName,
       };
+      const insert = database
+        .prepare(
+          "INSERT INTO previews (id, document_id, organization_id, user_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          row.id,
+          row.document_id,
+          input.organizationId,
+          input.userId,
+          row.name,
+          row.version,
+          row.manifest,
+          row.total_bytes,
+          row.file_count,
+          row.created_at,
+          row.expires_at,
+          row.visibility,
+          visibility.accessCodeHash,
+          row.repo_host,
+          row.repo_org,
+          row.repo_name,
+        );
       yield* Effect.promise(() =>
-        database
-          .prepare(
-            "INSERT INTO previews (id, organization_id, user_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          )
-          .bind(
-            row.id,
-            input.organizationId,
-            input.userId,
-            row.name,
-            row.version,
-            row.manifest,
-            row.total_bytes,
-            row.file_count,
-            row.created_at,
-            row.expires_at,
-            row.visibility,
-            visibility.accessCodeHash,
-            row.repo_host,
-            row.repo_org,
-            row.repo_name,
-          )
-          .run(),
+        database.batch([insert, ...accessCodeStatements(row.document_id, visibility, now)]),
       );
       return response(row, config.previewDomain);
     });
@@ -330,18 +373,38 @@ export const previewsLayer = Layer.effect(
       },
     ) {
       const visibility = yield* visibilityHash(input.visibility, input.accessCode);
+      const now = Date.now();
+      const existing = yield* Effect.promise(() =>
+        database
+          .prepare(
+            "SELECT document_id FROM previews WHERE id = ? AND organization_id = ? AND expires_at > ?",
+          )
+          .bind(input.id, input.organizationId, now)
+          .first<{ document_id: string | null }>(),
+      );
+      if (existing?.document_id === undefined || existing.document_id === null)
+        return yield* Effect.fail(new NotFoundError({}));
+      const documentId = existing.document_id;
+      const update = database
+        .prepare(
+          "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ?",
+        )
+        .bind(
+          visibility.visibility,
+          visibility.accessCodeHash,
+          input.id,
+          input.organizationId,
+          now,
+        );
+      yield* Effect.promise(() =>
+        database.batch([update, ...accessCodeStatements(documentId, visibility, now)]),
+      );
       const value = yield* Effect.promise(() =>
         database
           .prepare(
-            "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ? RETURNING id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name",
+            "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND expires_at > ?",
           )
-          .bind(
-            visibility.visibility,
-            visibility.accessCodeHash,
-            input.id,
-            input.organizationId,
-            Date.now(),
-          )
+          .bind(input.id, input.organizationId, now)
           .first(),
       );
       const decoded = decodePreviewRow(value);
@@ -381,7 +444,7 @@ export const previewsLayer = Layer.effect(
       const result = yield* Effect.promise(() =>
         database
           .prepare(
-            "SELECT id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
+            "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
           )
           .bind(organizationId, Date.now())
           .all(),
@@ -395,7 +458,7 @@ export const previewsLayer = Layer.effect(
       const value = yield* Effect.promise(() =>
         database
           .prepare(
-            "SELECT id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
+            "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
           )
           .bind(input.id, input.organizationId, input.userId)
           .first(),

@@ -4,6 +4,8 @@ import type { PreviewVisibility } from "./schemas.js";
 
 export { ACCESS_CODE_MINIMUM_LENGTH };
 export const ACCESS_CODE_MAXIMUM_LENGTH = 128;
+export const DOCUMENT_ACCESS_GRANT_TTL_MS = 24 * 60 * 60 * 1000;
+export const PREVIEW_ACCESS_SESSION_COOKIE = "preview_access_session";
 
 const encoder = new TextEncoder();
 const hmacKeys = new Map<string, Promise<CryptoKey>>();
@@ -41,6 +43,22 @@ function hmacKey(secret: string): Promise<CryptoKey> {
 async function hmacHex(secret: string, bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.sign("HMAC", await hmacKey(secret), bytes);
   return hex(new Uint8Array(digest));
+}
+
+export async function accessCodeFingerprint(code: string, secret: string): Promise<string> {
+  return hmacHex(secret, encoder.encode(`preview-access-code:${code}`));
+}
+
+export function accessSessionToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
+}
+
+export async function accessSessionHash(token: string, secret: string): Promise<string | null> {
+  if (!/^[A-Za-z0-9_-]{43}$/u.test(token)) return null;
+  return hmacHex(secret, encoder.encode(`preview-access-session:${token}`));
 }
 
 export async function hashAccessCode(code: string, secret: string): Promise<string> {

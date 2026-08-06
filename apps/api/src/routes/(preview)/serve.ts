@@ -1,9 +1,11 @@
-import { timingSafeSecretEqual } from "../../auth/index.js";
 import type { Env } from "../../env.js";
 import {
+  DOCUMENT_ACCESS_GRANT_TTL_MS,
+  PREVIEW_ACCESS_SESSION_COOKIE,
+  accessCodeFingerprint,
+  accessSessionHash,
+  accessSessionToken,
   cookieValue,
-  previewAccessCookieName,
-  previewAccessCookieValue,
   verifyAccessCode,
 } from "../../preview-access.js";
 import { errorPage, previewCodePage } from "../(web)/pages.js";
@@ -37,69 +39,146 @@ function requestedRange(value: string | null): R2Range | undefined {
 interface PreviewAccessRow {
   readonly expires_at: number;
   readonly visibility: string;
-  readonly access_code_hash: string | null;
+  readonly document_id: string | null;
   readonly manifest: string;
+}
+
+interface AccessCodeRow {
+  readonly id: string;
+  readonly code_hash: string;
+}
+
+async function sessionCredential(
+  request: Request,
+  secret: string,
+): Promise<{ readonly token: string; readonly hash: string }> {
+  const existing = cookieValue(request.headers.get("cookie"), PREVIEW_ACCESS_SESSION_COOKIE);
+  if (existing !== null) {
+    const hash = await accessSessionHash(existing, secret);
+    if (hash !== null) return { token: existing, hash };
+  }
+  const token = accessSessionToken();
+  const hash = await accessSessionHash(token, secret);
+  if (hash === null) throw new Error("generated invalid preview access session");
+  return { token, hash };
+}
+
+async function redeemAccessCode(
+  env: Env,
+  documentId: string,
+  submitted: string,
+  sessionHash: string,
+  now: number,
+): Promise<string | null> {
+  const secret = env.AUTH_SECRET;
+  if (secret === undefined) return null;
+  const fingerprint = await accessCodeFingerprint(submitted, secret);
+  const candidates = await env.DOMAINS.prepare(
+    "SELECT id, code_hash FROM preview_access_codes WHERE document_id = ? AND used_at IS NULL AND (code_fingerprint = ? OR code_fingerprint IS NULL) ORDER BY created_at DESC LIMIT 100",
+  )
+    .bind(documentId, fingerprint)
+    .all<AccessCodeRow>();
+  for (const candidate of candidates.results) {
+    if (!(await verifyAccessCode(submitted, candidate.code_hash, secret))) continue;
+    const redeemed = await env.DOMAINS.prepare(
+      "UPDATE preview_access_codes SET used_at = ?, used_by_session_hash = ? WHERE id = ? AND used_at IS NULL",
+    )
+      .bind(now, sessionHash, candidate.id)
+      .run();
+    return redeemed.meta.changes === 1 ? candidate.id : null;
+  }
+  return null;
+}
+
+function accessCookie(token: string): string {
+  return `${PREVIEW_ACCESS_SESSION_COOKIE}=${token}; Path=/; Max-Age=${String(Math.floor(DOCUMENT_ACCESS_GRANT_TTL_MS / 1000))}; HttpOnly; Secure; SameSite=Lax`;
+}
+
+function accessRedirect(location: string, sessionToken?: string): Response {
+  const outputHeaders = new Headers({
+    location,
+    "cache-control": "no-store",
+    "referrer-policy": "no-referrer",
+  });
+  if (sessionToken !== undefined) outputHeaders.set("set-cookie", accessCookie(sessionToken));
+  return new Response(null, { status: 303, headers: outputHeaders });
 }
 
 async function handleCodeSubmission(
   request: Request,
   env: Env,
   id: string,
-  preview: PreviewAccessRow,
+  documentId: string,
   url: URL,
+  submittedCode?: string,
 ): Promise<Response> {
-  if (env.AUTH_SECRET === undefined || preview.access_code_hash === null)
+  if (env.AUTH_SECRET === undefined)
     return errorPage(503, "server_misconfigured", "This preview cannot verify access codes.");
   const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
   const limited = await env.PREVIEW_RATE_LIMITER.limit({ key: `${clientIp}:${id}` });
   if (!limited.success) return errorPage(429, "rate_limited", "Too many access attempts.");
-  let submitted = "";
-  try {
-    const form = await request.formData();
-    const field = form.get("code");
-    if (typeof field === "string") submitted = field;
-  } catch {
-    return previewCodePage(true);
+  let submitted = submittedCode ?? "";
+  if (submittedCode === undefined) {
+    try {
+      const form = await request.formData();
+      const field = form.get("code");
+      if (typeof field === "string") submitted = field;
+    } catch {
+      return previewCodePage(true);
+    }
   }
-  if (
-    submitted === "" ||
-    !(await verifyAccessCode(submitted, preview.access_code_hash, env.AUTH_SECRET))
-  )
-    return previewCodePage(true);
-  const cookie = await previewAccessCookieValue(env.AUTH_SECRET, id, preview.access_code_hash);
-  const maxAge = Math.max(1, Math.floor((preview.expires_at - Date.now()) / 1000));
-  return new Response(null, {
-    status: 303,
-    headers: {
-      location: url.pathname,
-      "set-cookie": `${previewAccessCookieName(id)}=${cookie}; Path=/${id}; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`,
-    },
-  });
+  const session = await sessionCredential(request, env.AUTH_SECRET);
+  const now = Date.now();
+  const redeemedCodeId =
+    submitted === "" ? null : await redeemAccessCode(env, documentId, submitted, session.hash, now);
+  if (redeemedCodeId === null)
+    return submittedCode === undefined
+      ? previewCodePage(true)
+      : accessRedirect(`${url.origin}${url.pathname}?access=invalid`);
+  const expiresAt = now + DOCUMENT_ACCESS_GRANT_TTL_MS;
+  try {
+    await env.DOMAINS.prepare(
+      "INSERT INTO preview_access_grants (session_hash, document_id, created_at, expires_at) VALUES (?, ?, ?, ?) ON CONFLICT (session_hash, document_id) DO UPDATE SET created_at = excluded.created_at, expires_at = excluded.expires_at",
+    )
+      .bind(session.hash, documentId, now, expiresAt)
+      .run();
+  } catch (error: unknown) {
+    await env.DOMAINS.prepare(
+      "UPDATE preview_access_codes SET used_at = NULL, used_by_session_hash = NULL WHERE id = ? AND used_by_session_hash = ? AND used_at = ?",
+    )
+      .bind(redeemedCodeId, session.hash, now)
+      .run();
+    throw error;
+  }
+  return accessRedirect(`${url.origin}${url.pathname}`, session.token);
 }
 
-async function hasCodeAccess(
-  request: Request,
-  env: Env,
-  id: string,
-  preview: PreviewAccessRow,
-): Promise<boolean> {
-  if (env.AUTH_SECRET === undefined || preview.access_code_hash === null) return false;
-  const provided = cookieValue(request.headers.get("cookie"), previewAccessCookieName(id));
-  if (provided === null) return false;
-  const expected = await previewAccessCookieValue(env.AUTH_SECRET, id, preview.access_code_hash);
-  return timingSafeSecretEqual(provided, expected);
+async function hasDocumentAccess(request: Request, env: Env, documentId: string): Promise<boolean> {
+  if (env.AUTH_SECRET === undefined) return false;
+  const token = cookieValue(request.headers.get("cookie"), PREVIEW_ACCESS_SESSION_COOKIE);
+  if (token === null) return false;
+  const hash = await accessSessionHash(token, env.AUTH_SECRET);
+  if (hash === null) return false;
+  const grant = await env.DOMAINS.prepare(
+    "SELECT 1 AS allowed FROM preview_access_grants WHERE session_hash = ? AND document_id = ? AND expires_at > ?",
+  )
+    .bind(hash, documentId, Date.now())
+    .first<{ allowed: number }>();
+  return grant?.allowed === 1;
 }
 
 export async function servePreview(request: Request, env: Env, url: URL): Promise<Response> {
-  if (request.method !== "GET" && request.method !== "HEAD" && request.method !== "POST")
+  if (request.method !== "GET" && request.method !== "HEAD" && request.method !== "POST") {
     return siteNotFound();
-  if (url.pathname === "/" || url.pathname === "")
+  }
+  if (url.pathname === "/" || url.pathname === "") {
     return Response.redirect(`https://app.${env.TUNNEL_DOMAIN}/`, 302);
+  }
   const match = /^\/([a-z2-7]{26})(?:\/(.*))?$/u.exec(url.pathname);
   if (match?.[1] === undefined) return siteNotFound();
   const id = match[1];
   const preview = await env.DOMAINS.prepare(
-    "SELECT expires_at, visibility, access_code_hash, manifest FROM previews WHERE id = ?",
+    "SELECT expires_at, visibility, document_id, manifest FROM previews WHERE id = ?",
   )
     .bind(id)
     .first<PreviewAccessRow>();
@@ -109,8 +188,19 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
     return errorPage(403, "preview_private", "This preview is private.");
   if (preview.visibility === "code") {
     cacheControl = "private, no-store";
-    if (request.method === "POST") return handleCodeSubmission(request, env, id, preview, url);
-    if (!(await hasCodeAccess(request, env, id, preview))) return previewCodePage(false);
+    const documentId = preview.document_id ?? id;
+    const allowed = await hasDocumentAccess(request, env, documentId);
+    if (allowed) {
+      if (request.method === "POST") return siteNotFound();
+      if (url.searchParams.has("code") || url.searchParams.has("access"))
+        return accessRedirect(`${url.origin}${url.pathname}`);
+    } else {
+      if (request.method === "POST") return handleCodeSubmission(request, env, id, documentId, url);
+      const submittedCode = request.method === "GET" ? url.searchParams.get("code") : null;
+      if (submittedCode !== null)
+        return handleCodeSubmission(request, env, id, documentId, url, submittedCode);
+      return previewCodePage(url.searchParams.get("access") === "invalid");
+    }
   } else if (request.method === "POST") return siteNotFound();
   let path = match[2];
   if (path === undefined || path === "") {

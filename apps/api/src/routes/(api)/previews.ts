@@ -4,6 +4,7 @@ import { Previews, Schemas } from "@tunnel/core";
 import { authenticateUser, authErrorResponse } from "../../auth/workos.js";
 import type { Env } from "../../env.js";
 import {
+  accessCodeFingerprint,
   hashAccessCode,
   isAccessCode,
   isPreviewVisibility,
@@ -21,6 +22,7 @@ interface PreviewFile {
 
 interface PreviewRow {
   readonly id: string;
+  readonly document_id: string;
   readonly name: string;
   readonly version: number;
   readonly total_bytes: number;
@@ -37,6 +39,7 @@ interface PreviewRow {
 interface VisibilityInput {
   readonly visibility: PreviewVisibility;
   readonly accessCodeHash: string | null;
+  readonly accessCodeFingerprint: string | null;
 }
 
 async function visibilityFromBody(
@@ -49,10 +52,14 @@ async function visibilityFromBody(
   if (visibility === "code") {
     if (!isAccessCode(accessCode)) return null;
     if (authSecret === undefined) return null;
-    return { visibility, accessCodeHash: await hashAccessCode(accessCode, authSecret) };
+    return {
+      visibility,
+      accessCodeHash: await hashAccessCode(accessCode, authSecret),
+      accessCodeFingerprint: await accessCodeFingerprint(accessCode, authSecret),
+    };
   }
   if (accessCode !== undefined) return null;
-  return { visibility, accessCodeHash: null };
+  return { visibility, accessCodeHash: null, accessCodeFingerprint: null };
 }
 
 function validFile(value: unknown): value is PreviewFile {
@@ -96,6 +103,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function previewResponse(row: PreviewRow, domain: string): Record<string, string | number | null> {
   return {
     id: row.id,
+    documentId: row.document_id,
     name: row.name,
     version: row.version,
     url: `https://${domain}/${row.id}`,
@@ -108,6 +116,29 @@ function previewResponse(row: PreviewRow, domain: string): Record<string, string
     repoOrg: row.repo_org,
     repoName: row.repo_name,
   };
+}
+
+function accessCodeStatements(
+  env: Env,
+  documentId: string,
+  visibility: VisibilityInput,
+  now: number,
+): readonly D1PreparedStatement[] {
+  if (visibility.accessCodeHash === null || visibility.accessCodeFingerprint === null) return [];
+  return [
+    env.DOMAINS.prepare(
+      "UPDATE preview_access_codes SET used_at = ? WHERE document_id = ? AND used_at IS NULL",
+    ).bind(now, documentId),
+    env.DOMAINS.prepare(
+      "INSERT INTO preview_access_codes (id, document_id, code_hash, code_fingerprint, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).bind(
+      crypto.randomUUID(),
+      documentId,
+      visibility.accessCodeHash,
+      visibility.accessCodeFingerprint,
+      now,
+    ),
+  ];
 }
 
 async function deletePrefix(env: Env, id: string): Promise<void> {
@@ -188,7 +219,7 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
     repo_name: optionalText(body, "repoName"),
   };
   const latest = await env.DOMAINS.prepare(
-    "SELECT COALESCE(MAX(version), 0) AS version FROM previews WHERE organization_id = ? AND name = ? AND repo_host IS ? AND repo_org IS ? AND repo_name IS ? AND expires_at > ?",
+    "SELECT version, document_id FROM previews WHERE organization_id = ? AND name = ? AND repo_host IS ? AND repo_org IS ? AND repo_name IS ? AND expires_at > ? ORDER BY version DESC LIMIT 1",
   )
     .bind(
       auth.organizationId,
@@ -198,29 +229,36 @@ export async function handlePreviewCreate(request: Request, env: Env): Promise<R
       rowData.repo_name,
       now,
     )
-    .first<{ version: number }>();
-  const row: PreviewRow = { ...rowData, version: (latest?.version ?? 0) + 1 };
-  await env.DOMAINS.prepare(
-    "INSERT INTO previews (id, organization_id, user_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-  )
-    .bind(
-      row.id,
-      auth.organizationId,
-      auth.userId,
-      row.name,
-      row.version,
-      row.manifest,
-      row.total_bytes,
-      row.file_count,
-      row.created_at,
-      row.expires_at,
-      row.visibility,
-      visibilityInput.accessCodeHash,
-      row.repo_host,
-      row.repo_org,
-      row.repo_name,
-    )
-    .run();
+    .first<{ version: number; document_id: string | null }>();
+  const row: PreviewRow = {
+    ...rowData,
+    document_id: latest?.document_id ?? rowData.id,
+    version: (latest?.version ?? 0) + 1,
+  };
+  const insert = env.DOMAINS.prepare(
+    "INSERT INTO previews (id, document_id, organization_id, user_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, access_code_hash, repo_host, repo_org, repo_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  ).bind(
+    row.id,
+    row.document_id,
+    auth.organizationId,
+    auth.userId,
+    row.name,
+    row.version,
+    row.manifest,
+    row.total_bytes,
+    row.file_count,
+    row.created_at,
+    row.expires_at,
+    row.visibility,
+    visibilityInput.accessCodeHash,
+    row.repo_host,
+    row.repo_org,
+    row.repo_name,
+  );
+  await env.DOMAINS.batch([
+    insert,
+    ...accessCodeStatements(env, row.document_id, visibilityInput, now),
+  ]);
   return jsonResponse(previewResponse(row, env.PREVIEW_DOMAIN), 201);
 }
 
@@ -241,16 +279,25 @@ export async function handlePreviewUpdate(
     return jsonError(400, "bad_request");
   const visibilityInput = await visibilityFromBody(body, env.AUTH_SECRET);
   if (visibilityInput === null) return jsonError(400, "bad_request");
-  const updated = await env.DOMAINS.prepare(
-    "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ? RETURNING id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name",
+  const existing = await env.DOMAINS.prepare(
+    "SELECT document_id FROM previews WHERE id = ? AND organization_id = ? AND expires_at > ?",
   )
-    .bind(
-      visibilityInput.visibility,
-      visibilityInput.accessCodeHash,
-      id,
-      auth.organizationId,
-      Date.now(),
-    )
+    .bind(id, auth.organizationId, Date.now())
+    .first<{ document_id: string | null }>();
+  if (existing?.document_id === undefined || existing.document_id === null)
+    return jsonError(404, "not_found");
+  const now = Date.now();
+  const update = env.DOMAINS.prepare(
+    "UPDATE previews SET visibility = ?, access_code_hash = ? WHERE id = ? AND organization_id = ? AND expires_at > ?",
+  ).bind(visibilityInput.visibility, visibilityInput.accessCodeHash, id, auth.organizationId, now);
+  await env.DOMAINS.batch([
+    update,
+    ...accessCodeStatements(env, existing.document_id, visibilityInput, now),
+  ]);
+  const updated = await env.DOMAINS.prepare(
+    "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND expires_at > ?",
+  )
+    .bind(id, auth.organizationId, now)
     .first<PreviewRow>();
   if (updated === null) return jsonError(404, "not_found");
   return jsonResponse(previewResponse(updated, env.PREVIEW_DOMAIN));
@@ -302,7 +349,7 @@ export async function handlePreviewList(request: Request, env: Env): Promise<Res
   const auth = await authenticateUser(request, env);
   if (!auth.ok) return authErrorResponse(auth);
   const result = await env.DOMAINS.prepare(
-    "SELECT id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
+    "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE organization_id = ? AND expires_at > ? ORDER BY created_at DESC",
   )
     .bind(auth.organizationId, Date.now())
     .all<PreviewRow>();
@@ -319,7 +366,7 @@ export async function handlePreviewDelete(
   const auth = await authenticateUser(request, env);
   if (!auth.ok) return authErrorResponse(auth);
   const row = await env.DOMAINS.prepare(
-    "SELECT id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
+    "SELECT id, document_id, name, version, manifest, total_bytes, file_count, created_at, expires_at, visibility, repo_host, repo_org, repo_name FROM previews WHERE id = ? AND organization_id = ? AND user_id = ?",
   )
     .bind(id, auth.organizationId, auth.userId)
     .first<PreviewRow>();
@@ -355,4 +402,14 @@ export async function cleanupExpiredPreviews(env: Env): Promise<void> {
       yield* previews.cleanupExpired();
     }),
   );
+  const now = Date.now();
+  await env.DOMAINS.batch([
+    env.DOMAINS.prepare("DELETE FROM preview_access_grants WHERE expires_at <= ?").bind(now),
+    env.DOMAINS.prepare(
+      "DELETE FROM preview_access_codes WHERE NOT EXISTS (SELECT 1 FROM previews WHERE previews.document_id = preview_access_codes.document_id)",
+    ),
+    env.DOMAINS.prepare(
+      "DELETE FROM preview_access_grants WHERE NOT EXISTS (SELECT 1 FROM previews WHERE previews.document_id = preview_access_grants.document_id)",
+    ),
+  ]);
 }

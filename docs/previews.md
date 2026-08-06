@@ -53,6 +53,8 @@ DEFAULT 'public'` (`public` | `private` | `code`) and `access_code_hash TEXT`
   (`v2:<salt-hex>:<hmac-hex>`, set only for `code`).
 - Migration `0008_preview_versions.sql` adds `version`; uploads with the same
   filename and repository metadata create a new immutable version and ID.
+- Migration `0009_preview_document_access.sql` adds stable `document_id`
+  grouping across versions, one-time code records, and 24-hour session grants.
 
 ## API (new `apps/api/src/routes/(api)/previews.ts`, follows domains.ts)
 
@@ -62,13 +64,14 @@ via `limitsForOrganization` (extended, see Limits).
 - `POST /api/v1/previews` — body `{name, files: [{path, size, contentType,
 sha256}]}` plus optional `visibility` (`public` default | `private` | `code`)
   and `accessCode` (required iff `visibility` is `code`, 12–128 chars). Access
-  codes are peppered with `AUTH_SECRET` before storage.
+  codes are peppered with `AUTH_SECRET` before storage and become invalid after
+  one successful redemption.
   Validates paths (reject absolute, `..`, backslashes, empty),
   per-file/per-preview/org-quota limits. Inserts the D1 row, returns
-  `201 {id, url, expiresAt, visibility, ...}`.
+  `201 {id, documentId, url, expiresAt, visibility, ...}`.
 - `PATCH /api/v1/previews/:id` — body `{visibility, accessCode?}` (same rules)
-  updates visibility; changing the code invalidates previously issued access
-  cookies.
+  updates visibility and mints a new one-time code for the document. Existing
+  24-hour grants remain valid.
 - `PUT /api/v1/previews/:id/files/<url-encoded-path>` — ownership check, path
   must exist in the manifest, `Content-Length` must match. Streams
   `request.body` straight into `env.PREVIEWS.put(key, body, {httpMetadata:
@@ -105,12 +108,12 @@ public, max-age=60` with ETag revalidation. Do not use the Cache API.
 - Expired previews: object may already be gone (cron), but also check
   `expires_at` in D1 and return 404/410 past expiry.
 - Visibility gate (before any R2 read): `private` → styled 403 page. `code` →
-  requires the `preview_access_<id>` cookie, an HMAC-SHA256 of
-  `preview-access:<id>:<access_code_hash>` keyed with `AUTH_SECRET`; without it
-  the Worker renders a code form (401) that POSTs to the same URL, verifies the
-  code against the salted hash, sets the cookie (`Path=/<id>`, `HttpOnly`,
-  `Secure`, `SameSite=Lax`, expiring with the preview) and 303-redirects back.
-  Gated responses use `cache-control: private, no-store`.
+  requires a server-side grant referenced by the opaque
+  `preview_access_session` cookie. A valid form submission or `?code=<code>`
+  atomically consumes the one-time code, grants its document for 24 hours, sets
+  the cookie (`Path=/`, `HttpOnly`, `Secure`, `SameSite=Lax`), and
+  303-redirects to the clean URL. The grant applies to every version sharing
+  the document ID. Gated responses use `cache-control: private, no-store`.
 
 ## TTL cleanup (cron)
 
@@ -185,8 +188,8 @@ the dashboard assets page:
 - `private` — serving host returns 403; manage/delete still works via the
   authenticated API.
 - `code` — public URL, but visitors must enter an access code once per
-  browser; access is remembered with a signed cookie until the preview
-  expires or the code changes.
+  browser. Each code works once; the resulting server-side document grant
+  works across versions for 24 hours. Another device needs a newly minted code.
 
 ## Explicitly out of scope (v1)
 
