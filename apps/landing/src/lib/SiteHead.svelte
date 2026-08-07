@@ -1,7 +1,7 @@
 <script lang="ts">
   import { SITE_METADATA } from "$lib/site-metadata";
 
-  let { title, path }: { title: string; path: string } = $props();
+  let { title, path, robots }: { title: string; path: string; robots?: string } = $props();
 
   const pageUrl = $derived(new URL(path, SITE_METADATA.origin).toString());
   const socialImageUrl = new URL(SITE_METADATA.socialImage.path, SITE_METADATA.origin).toString();
@@ -10,6 +10,7 @@
 <svelte:head>
   <title>{title}</title>
   <meta name="description" content={SITE_METADATA.description} />
+  {#if robots !== undefined}<meta name="robots" content={robots} />{/if}
   <meta name="theme-color" content={SITE_METADATA.themeColor} />
   <link rel="canonical" href={pageUrl} />
   <link rel="icon" href={SITE_METADATA.icons.favicon} />

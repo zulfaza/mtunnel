@@ -173,6 +173,7 @@ describe("previews", () => {
     expect(served.status).toBe(206);
     expect(await served.text()).toBe("ell");
     expect(served.headers.get("content-range")).toBe("bytes 1-3/5");
+    expect(served.headers.get("x-robots-tag")).toBe("noindex, nofollow");
     const root = await SELF.fetch(`http://preview.worker.test/${preview.id}`);
     expect(root.status).toBe(200);
     expect(await root.text()).toBe("hello");
