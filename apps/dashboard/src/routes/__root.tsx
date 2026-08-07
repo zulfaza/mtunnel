@@ -16,6 +16,7 @@ function RootDocument(): ReactNode {
         <meta content="width=device-width, initial-scale=1" name="viewport" />
         <title>{title}</title>
         <meta content={description} name="description" />
+        <meta content="noindex, nofollow" name="robots" />
         <meta content="#fbfaf8" name="theme-color" />
         <meta content="mTunnel dashboard" name="application-name" />
         <meta content="mTunnel dashboard" name="apple-mobile-web-app-title" />

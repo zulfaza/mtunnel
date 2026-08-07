@@ -20,7 +20,7 @@
   const ORG_COMMANDS = ["mt org list", 'mt org create "Acme Inc"', "mt org use org_123"].join("\n");
 </script>
 
-<SiteHead {...SITE_METADATA.pages.docs} />
+<SiteHead {...SITE_METADATA.pages.docs} robots="noindex, nofollow" />
 
 <header class="hero reveal">
   <h1>Docs</h1>

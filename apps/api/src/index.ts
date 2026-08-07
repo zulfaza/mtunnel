@@ -12,6 +12,17 @@ import type { TrackedEvent } from "./routes/tracked-event.js";
 import { servePreview } from "./routes/(preview)/serve.js";
 import { cleanupExpiredPreviews } from "./routes/(api)/previews.js";
 
+function noIndex(response: Response): Response {
+  if (response.status === 101) return response;
+  const headers = new Headers(response.headers);
+  headers.set("x-robots-tag", "noindex, nofollow");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const hostname = url.hostname.toLowerCase();
@@ -24,22 +35,22 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   }
 
   if (hostname === env.PREVIEW_DOMAIN.toLowerCase()) {
-    return servePreview(request, env, url);
+    return noIndex(await servePreview(request, env, url));
   }
 
   const hostTunnelId = tunnelIdFromHost(request.headers.get("host"), env.TUNNEL_DOMAIN);
   if (hostTunnelId !== null)
-    return forwardProxy(request, env, hostTunnelId, url, "standard_domain");
+    return noIndex(await forwardProxy(request, env, hostTunnelId, url, "standard_domain"));
   const customTunnelId = await tunnelIdForDomain(env, hostname);
   if (customTunnelId !== null) {
     ctx.waitUntil(markDomainUsed(env, hostname));
-    return forwardProxy(request, env, customTunnelId, url, "custom_domain");
+    return noIndex(await forwardProxy(request, env, customTunnelId, url, "custom_domain"));
   }
   if (env.DEV_ROUTING === "true") {
     const route = tunnelIdFromDevPath(url.pathname);
     if (route !== null) {
       url.pathname = route.rewrittenPath;
-      return forwardProxy(request, env, route.tunnelId, url, "development_path");
+      return noIndex(await forwardProxy(request, env, route.tunnelId, url, "development_path"));
     }
   }
   return siteNotFound();

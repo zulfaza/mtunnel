@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 
 import { SITE_METADATA } from "../src/lib/site-metadata.js";
+import { GET as robots } from "../src/routes/robots.txt/+server.js";
+import { GET as sitemap } from "../src/routes/sitemap.xml/+server.js";
 
 function staticFile(name: string): string {
   return readFileSync(fileURLToPath(new URL(`../static/${name}`, import.meta.url)), "utf8");
@@ -25,6 +27,14 @@ describe("site metadata", () => {
       expect(title).toContain("mTunnel");
       expect(new URL(path, SITE_METADATA.origin).origin).toBe(SITE_METADATA.origin);
     }
+  });
+
+  it("only advertises the landing page to crawlers", async () => {
+    await expect(robots().text()).resolves.toBe(
+      `User-agent: *\nAllow: /\nSitemap: ${SITE_METADATA.origin}/sitemap.xml\n`,
+    );
+    await expect(sitemap().text()).resolves.toContain(`<loc>${SITE_METADATA.origin}/</loc>`);
+    await expect(sitemap().text()).resolves.not.toContain(SITE_METADATA.pages.docs.path);
   });
 });
 

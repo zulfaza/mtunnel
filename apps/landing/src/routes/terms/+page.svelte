@@ -3,7 +3,7 @@
   import { SITE_METADATA } from "$lib/site-metadata";
 </script>
 
-<SiteHead {...SITE_METADATA.pages.terms} />
+<SiteHead {...SITE_METADATA.pages.terms} robots="noindex, nofollow" />
 
 <header class="hero reveal">
   <h1>Terms of Service</h1>
