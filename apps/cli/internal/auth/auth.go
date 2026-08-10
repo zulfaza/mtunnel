@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +26,20 @@ type DeviceAuthorization struct {
 type Credentials struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
+}
+
+type responseError struct {
+	Operation  string
+	StatusCode int
+}
+
+func (e *responseError) Error() string {
+	return fmt.Sprintf("%s: server returned status %d", e.Operation, e.StatusCode)
+}
+
+func IsUnauthorized(err error) bool {
+	var response *responseError
+	return errors.As(err, &response) && response.StatusCode == http.StatusUnauthorized
 }
 
 func endpoint(server, path string) (string, error) {
@@ -171,7 +186,7 @@ func MintToken(ctx context.Context, client *http.Client, server, accessToken, tu
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return "", fmt.Errorf("mint agent token: server returned status %d", resp.StatusCode)
+		return "", &responseError{Operation: "mint agent token", StatusCode: resp.StatusCode}
 	}
 	var result struct {
 		Token string `json:"token"`

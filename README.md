@@ -123,8 +123,9 @@ Command-line secrets can be visible in
 the local process list; prefer `mt login` for routine use.
 
 Only one agent may own a tunnel name. A newer connection replaces the older one.
-The agent automatically re-mints a short-lived token and reconnects with
-exponential backoff after an unexpected disconnect.
+The CLI automatically refreshes expired WorkOS access tokens, persists rotated
+credentials, re-mints a short-lived agent token, and reconnects with exponential
+backoff after an unexpected disconnect.
 
 ## Testing
 

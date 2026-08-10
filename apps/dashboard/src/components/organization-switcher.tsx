@@ -64,10 +64,10 @@ export function OrganizationSwitcher(): ReactNode {
 
   return (
     <>
-      <span className="inline-flex items-center gap-1">
+      <span className="flex min-w-0 items-center gap-1">
         <select
           aria-label="Organization"
-          className="h-7 max-w-40 border border-border bg-background px-2 text-xs text-foreground"
+          className="h-7 min-w-0 flex-1 border border-border bg-background px-2 text-xs text-foreground"
           onChange={(event) => change(event.target.value)}
           value={selected}
         >

@@ -1,3 +1,12 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 
-export default defineConfig({});
+export default defineConfig({
+  resolve: {
+    alias: {
+      "cloudflare:workers": fileURLToPath(
+        new URL("./src/test/cloudflare-workers.ts", import.meta.url),
+      ),
+    },
+  },
+});

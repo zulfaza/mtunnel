@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/zulfaza/mtunnel/apps/cli/internal/auth"
 	"github.com/zulfaza/mtunnel/apps/cli/internal/protocol"
 )
 
@@ -57,6 +58,11 @@ func testServer(t *testing.T, tunnel func(*websocket.Conn, *http.Request)) *http
 			_, _ = io.WriteString(w, `{"token":"test-token"}`)
 			return
 		}
+		if r.URL.Path == "/api/v1/auth/refresh" {
+			t.Error("unexpected token refresh")
+			http.Error(w, "unexpected token refresh", http.StatusInternalServerError)
+			return
+		}
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
 			t.Errorf("websocket Authorization = %q, want bearer token", got)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -83,6 +89,105 @@ func ack() protocol.HelloAck {
 
 func runOptions(server string) Options {
 	return Options{Server: server, Secret: "secret", TunnelID: "test-tunnel", AgentVersion: "test", InitialBackoff: 5 * time.Millisecond, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+}
+
+func TestValidAccessTokenIsNotRefreshed(t *testing.T) {
+	connected := make(chan struct{}, 1)
+	server := testServer(t, func(conn *websocket.Conn, request *http.Request) {
+		ctx := request.Context()
+		if _, err := readServerMessage(ctx, conn); err != nil {
+			return
+		}
+		if err := writeServerMessage(ctx, conn, ack()); err != nil {
+			return
+		}
+		connected <- struct{}{}
+		<-ctx.Done()
+	})
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	opts := runOptions(server.URL)
+	opts.RefreshToken = "unused-refresh"
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, opts) }()
+	select {
+	case <-connected:
+		cancel()
+	case <-ctx.Done():
+		t.Fatal("client did not connect")
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnauthorizedAccessTokenIsRefreshed(t *testing.T) {
+	connected := make(chan struct{}, 1)
+	saved := make(chan auth.Credentials, 1)
+	var tokenRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/auth/token":
+			tokenRequests.Add(1)
+			if r.Header.Get("Authorization") != "Bearer fresh-access" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			_, _ = io.WriteString(w, `{"token":"agent-token"}`)
+		case "/api/v1/auth/refresh":
+			_, _ = io.WriteString(w, `{"access_token":"fresh-access","refresh_token":"fresh-refresh"}`)
+		default:
+			if r.Header.Get("Authorization") != "Bearer agent-token" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			conn, err := websocket.Accept(w, r, nil)
+			if err != nil {
+				return
+			}
+			defer conn.CloseNow()
+			ctx := r.Context()
+			if _, err := readServerMessage(ctx, conn); err != nil {
+				return
+			}
+			if err := writeServerMessage(ctx, conn, ack()); err != nil {
+				return
+			}
+			connected <- struct{}{}
+			<-ctx.Done()
+		}
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	opts := runOptions(server.URL)
+	opts.Secret = "expired-access"
+	opts.RefreshToken = "old-refresh"
+	opts.OnCredentials = func(credentials auth.Credentials) error {
+		saved <- credentials
+		return nil
+	}
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, opts) }()
+	select {
+	case <-connected:
+		cancel()
+	case <-ctx.Done():
+		t.Fatal("client did not connect after refresh")
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if tokenRequests.Load() != 2 {
+		t.Fatalf("token requests = %d, want 2", tokenRequests.Load())
+	}
+	select {
+	case credentials := <-saved:
+		if credentials.AccessToken != "fresh-access" || credentials.RefreshToken != "fresh-refresh" {
+			t.Fatalf("saved credentials = %#v", credentials)
+		}
+	default:
+		t.Fatal("rotated credentials not saved")
+	}
 }
 
 func TestReconnectAfterServerClose(t *testing.T) {

@@ -27,6 +27,15 @@ export interface DashboardUser {
   readonly session: DashboardSession;
 }
 
+export class SignedOutError extends Error {
+  readonly _tag = "SignedOutError";
+
+  constructor() {
+    super("signed_out");
+    this.name = "SignedOutError";
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -238,8 +247,14 @@ async function authenticatedSession(session: DashboardSession): Promise<Dashboar
 
 export async function requireUser(): Promise<DashboardUser> {
   const session = await readSession();
-  if (session === null) throw new Error("signed_out");
-  return authenticatedSession(session);
+  if (session === null) throw new SignedOutError();
+  try {
+    return await authenticatedSession(session);
+  } catch (cause) {
+    if (!(cause instanceof Errors.UnauthorizedError)) throw cause;
+    clearSession();
+    throw new SignedOutError();
+  }
 }
 
 export async function membership(

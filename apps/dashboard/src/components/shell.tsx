@@ -32,9 +32,6 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactNode
             dashboard
           </span>
         </a>
-        <div className="order-3 basis-full min-w-0 sm:order-none sm:basis-auto sm:mr-auto">
-          <OrganizationSwitcher />
-        </div>
         <div className="relative">
           <button
             aria-expanded={accountMenuOpen}
@@ -63,7 +60,10 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactNode
         </div>
       </header>
       <div className="flex flex-1 flex-col sm:flex-row">
-        <nav className="flex shrink-0 gap-1 border-b border-border-soft px-5 py-3 sm:w-44 sm:flex-col sm:border-b-0 sm:border-r sm:px-4 sm:py-8">
+        <nav className="flex shrink-0 flex-wrap gap-1 border-b border-border-soft px-5 py-3 sm:w-44 sm:flex-col sm:flex-nowrap sm:border-b-0 sm:border-r sm:px-4 sm:py-8">
+          <div className="mb-2 w-full min-w-0 pb-2 sm:mb-4 sm:pb-4">
+            <OrganizationSwitcher />
+          </div>
           <Link
             className="px-3 py-1.5 text-[13px] text-muted-foreground no-underline hover:bg-muted hover:text-foreground"
             to="/"
