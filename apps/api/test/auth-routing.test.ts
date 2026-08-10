@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { mintAgentToken, mintSignedToken, verifyAgentToken } from "../src/auth/index.js";
 import { tunnelIdFromDevPath, tunnelIdFromHost } from "../src/routing/index.js";
+import { organizationRoute } from "../src/routes/(api)/organizations.js";
 
 describe("agent tokens", () => {
   it("mints and verifies a valid token", async () => {
@@ -62,5 +63,30 @@ describe("routing", () => {
       tunnelId: "demo-tunnel",
       rewrittenPath: "/",
     });
+  });
+
+  it("parses organization management paths", () => {
+    expect(organizationRoute("/api/v1/organizations/org_1")).toEqual({
+      action: "detail",
+      organizationId: "org_1",
+    });
+    expect(organizationRoute("/api/v1/organizations/org_1/invitations")).toEqual({
+      action: "invitations",
+      organizationId: "org_1",
+    });
+    expect(organizationRoute("/api/v1/organizations/org_1/membership")).toEqual({
+      action: "membership",
+      organizationId: "org_1",
+    });
+    expect(organizationRoute("/api/v1/organizations/org_1/members")).toEqual({
+      action: "members",
+      organizationId: "org_1",
+    });
+    expect(organizationRoute("/api/v1/organizations/org_1/members/om_2")).toEqual({
+      action: "member",
+      organizationId: "org_1",
+      membershipId: "om_2",
+    });
+    expect(organizationRoute("/api/v1/organizations/org_1/unknown")).toBeNull();
   });
 });

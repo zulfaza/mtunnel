@@ -82,6 +82,12 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactNode
           >
             tunnels
           </Link>
+          <Link
+            className="px-3 py-1.5 text-[13px] text-muted-foreground no-underline hover:bg-muted hover:text-foreground"
+            to="/organizations"
+          >
+            organizations
+          </Link>
         </nav>
         <main className="flex min-w-0 flex-1 flex-col">{children}</main>
       </div>
