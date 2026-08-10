@@ -76,7 +76,8 @@ func Run(ctx context.Context, opts Options) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		if opts.RefreshToken != "" {
+		ack, err := runOnce(ctx, opts)
+		if auth.IsUnauthorized(err) && opts.RefreshToken != "" {
 			credentials, refreshErr := auth.Refresh(ctx, opts.HTTPClient, opts.Server, opts.RefreshToken)
 			if refreshErr != nil {
 				return refreshErr
@@ -87,8 +88,8 @@ func Run(ctx context.Context, opts Options) error {
 					return saveErr
 				}
 			}
+			ack, err = runOnce(ctx, opts)
 		}
-		ack, err := runOnce(ctx, opts)
 		if errors.Is(err, ErrReplaced) || errors.Is(err, ErrLimitReached) {
 			return err
 		}

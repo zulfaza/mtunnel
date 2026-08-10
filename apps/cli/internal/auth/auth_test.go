@@ -80,4 +80,7 @@ func TestMintTokenUnauthorized(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "401") {
 		t.Fatalf("error = %v, want descriptive 401 error", err)
 	}
+	if !IsUnauthorized(err) {
+		t.Fatalf("error = %v, want unauthorized response error", err)
+	}
 }
