@@ -1,9 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestUrl } from "@tanstack/react-start/server";
 import { env } from "cloudflare:workers";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { decodeJwt } from "jose";
-import { Organizations, Workos } from "@tunnel/core";
+import { Errors, Organizations, Schemas, Workos } from "@tunnel/core";
 import { workosRedirectUri } from "../lib/workos-redirect.js";
 import { runCore } from "./runtime.js";
 import {
@@ -29,6 +29,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+const decodeOrganizationCreate = Schema.decodeUnknownOption(Schemas.OrganizationCreateRequest);
+const decodeOrganizationRename = Schema.decodeUnknownOption(Schemas.OrganizationRenameRequest);
+const decodeOrganizationInvite = Schema.decodeUnknownOption(Schemas.OrganizationInviteRequest);
+const decodeOrganizationLeave = Schema.decodeUnknownOption(Schemas.OrganizationLeaveRequest);
+const decodeOrganizationMemberRemove = Schema.decodeUnknownOption(
+  Schemas.OrganizationMemberRemoveRequest,
+);
+
+function organizationOperationFailure(cause: unknown): never {
+  if (
+    cause instanceof Errors.ForbiddenError ||
+    cause instanceof Errors.LastOrganizationError ||
+    cause instanceof Errors.OrganizationCreateError ||
+    cause instanceof Errors.OrganizationUpdateError ||
+    cause instanceof Errors.OrganizationInviteError ||
+    cause instanceof Errors.OrganizationLeaveError ||
+    cause instanceof Errors.OrganizationMemberRemoveError
+  )
+    throw new Error(cause.code);
+  throw cause;
 }
 
 export const beginLogin = createServerFn({ method: "GET" })
@@ -128,18 +150,150 @@ export const listOrganizations = createServerFn({ method: "GET" }).handler(async
   );
 });
 
-export const createOrganization = createServerFn({ method: "POST" })
-  .validator((data: { readonly name: string }) => data)
-  .handler(async ({ data }: { readonly data: { readonly name: string } }) => {
-    const name = data.name.trim();
-    if (name.length === 0) throw new Error("organization_name_required");
-    const user = await requireUser();
-    return runCore(
+export const organizationSettings = createServerFn({ method: "GET" }).handler(async () => {
+  const user = await requireUser();
+  try {
+    const settings = await runCore(
       Effect.gen(function* () {
         const organizations = yield* Organizations.Organizations;
-        return yield* organizations.createForUser(user.userId, name);
+        return yield* organizations.settingsForUser(user.userId, user.organizationId);
       }),
     );
+    return { ...settings, currentUserId: user.userId };
+  } catch (cause) {
+    return organizationOperationFailure(cause);
+  }
+});
+
+export const createOrganization = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const decoded = decodeOrganizationCreate(input);
+    if (decoded._tag === "None") throw new Error("organization_name_invalid");
+    return decoded.value;
+  })
+  .handler(async ({ data }) => {
+    const name = data.name.trim();
+    if (name.length === 0 || name.length > 100) throw new Error("organization_name_invalid");
+    const user = await requireUser();
+    let organization: Schemas.OrganizationMembershipView;
+    try {
+      organization = await runCore(
+        Effect.gen(function* () {
+          const organizations = yield* Organizations.Organizations;
+          return yield* organizations.createForUser(user.userId, name);
+        }),
+      );
+    } catch (cause) {
+      return organizationOperationFailure(cause);
+    }
+    await writeSession({
+      accessToken: user.session.accessToken,
+      refreshToken: user.session.refreshToken,
+      email: user.session.email,
+      organizationId: organization.id,
+    });
+    return organization;
+  });
+
+export const renameOrganization = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const decoded = decodeOrganizationRename(input);
+    if (decoded._tag === "None") throw new Error("organization_name_invalid");
+    return decoded.value;
+  })
+  .handler(async ({ data }) => {
+    const name = data.name.trim();
+    if (name.length === 0) throw new Error("organization_name_invalid");
+    const user = await requireUser();
+    try {
+      return await runCore(
+        Effect.gen(function* () {
+          const organizations = yield* Organizations.Organizations;
+          return yield* organizations.renameForUser(user.userId, data.organizationId, name);
+        }),
+      );
+    } catch (cause) {
+      return organizationOperationFailure(cause);
+    }
+  });
+
+export const inviteOrganizationMember = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const decoded = decodeOrganizationInvite(input);
+    if (decoded._tag === "None") throw new Error("organization_email_invalid");
+    return decoded.value;
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    try {
+      return await runCore(
+        Effect.gen(function* () {
+          const organizations = yield* Organizations.Organizations;
+          return yield* organizations.inviteForUser(
+            user.userId,
+            data.organizationId,
+            data.email.toLowerCase(),
+          );
+        }),
+      );
+    } catch (cause) {
+      return organizationOperationFailure(cause);
+    }
+  });
+
+export const leaveOrganization = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const decoded = decodeOrganizationLeave(input);
+    if (decoded._tag === "None") throw new Error("organization_required");
+    return decoded.value;
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    try {
+      const result = await runCore(
+        Effect.gen(function* () {
+          const organizations = yield* Organizations.Organizations;
+          return yield* organizations.leaveForUser(user.userId, data.organizationId);
+        }),
+      );
+      const organizationId =
+        user.organizationId === data.organizationId
+          ? result.nextOrganizationId
+          : user.organizationId;
+      await writeSession({
+        accessToken: user.session.accessToken,
+        refreshToken: user.session.refreshToken,
+        email: user.session.email,
+        organizationId,
+      });
+      return { organizationId };
+    } catch (cause) {
+      return organizationOperationFailure(cause);
+    }
+  });
+
+export const removeOrganizationMember = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const decoded = decodeOrganizationMemberRemove(input);
+    if (decoded._tag === "None") throw new Error("organization_member_invalid");
+    return decoded.value;
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    try {
+      return await runCore(
+        Effect.gen(function* () {
+          const organizations = yield* Organizations.Organizations;
+          return yield* organizations.removeMemberForUser(
+            user.userId,
+            data.organizationId,
+            data.membershipId,
+          );
+        }),
+      );
+    } catch (cause) {
+      return organizationOperationFailure(cause);
+    }
   });
 
 export const selectOrganization = createServerFn({ method: "POST" })

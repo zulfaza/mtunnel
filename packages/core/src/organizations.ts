@@ -1,7 +1,20 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { OrganizationCreateError } from "./errors.js";
+import {
+  ForbiddenError,
+  LastOrganizationError,
+  OrganizationCreateError,
+  OrganizationInviteError,
+  OrganizationLeaveError,
+  OrganizationMemberRemoveError,
+  OrganizationUpdateError,
+} from "./errors.js";
 import { Workos, WorkosRequestError } from "./workos.js";
-import type { OrganizationMembershipView } from "./schemas.js";
+import type {
+  OrganizationInvitationView,
+  OrganizationMemberView,
+  OrganizationMembershipView,
+  OrganizationSettingsView,
+} from "./schemas.js";
 
 interface WorkosUser {
   readonly id: string;
@@ -19,25 +32,44 @@ const WorkosUser = Schema.Struct({
   email_verified: Schema.Boolean,
 });
 const Membership = Schema.Struct({
+  id: Schema.optionalKey(Schema.String),
+  user_id: Schema.optionalKey(Schema.String),
   organization_id: Schema.String,
   organization_name: Schema.optionalKey(Schema.String),
   status: Schema.optionalKey(Schema.String),
+  role: Schema.optionalKey(Schema.Struct({ slug: Schema.String })),
+  roles: Schema.optionalKey(Schema.Array(Schema.Struct({ slug: Schema.String }))),
+  user: Schema.optionalKey(
+    Schema.Struct({
+      id: Schema.String,
+      email: Schema.String,
+      first_name: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      last_name: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    }),
+  ),
 });
 const MembershipResponse = Schema.Struct({ data: Schema.Array(Membership) });
-const Invitation = Schema.Struct({
+const PendingInvitation = Schema.Struct({
   state: Schema.String,
   organization_id: Schema.String,
 });
-const InvitationResponse = Schema.Struct({ data: Schema.Array(Invitation) });
+const InvitationResponse = Schema.Struct({ data: Schema.Array(PendingInvitation) });
 const Organization = Schema.Struct({
   id: Schema.String,
   name: Schema.optionalKey(Schema.String),
+});
+const OrganizationInvitation = Schema.Struct({
+  id: Schema.String,
+  email: Schema.String,
+  state: Schema.String,
 });
 
 const decodeUser = Schema.decodeUnknownOption(WorkosUser);
 const decodeMemberships = Schema.decodeUnknownOption(MembershipResponse);
 const decodeInvitations = Schema.decodeUnknownOption(InvitationResponse);
 const decodeOrganization = Schema.decodeUnknownOption(Organization);
+const decodeMembership = Schema.decodeUnknownOption(Membership);
+const decodeInvitation = Schema.decodeUnknownOption(OrganizationInvitation);
 
 function organizationName(user: WorkosUser): string {
   const personName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
@@ -50,10 +82,46 @@ function activeMemberships(input: unknown): readonly OrganizationMembershipView[
   return decoded.value.data.flatMap((item): readonly OrganizationMembershipView[] =>
     item.status !== undefined && item.status !== "active"
       ? []
-      : item.organization_name === undefined
+      : item.id === undefined || item.organization_name === undefined
         ? []
-        : [{ id: item.organization_id, name: item.organization_name, role: "member" }],
+        : [membershipView(item.id, item.organization_id, item.organization_name, item)],
   );
+}
+
+function membershipView(
+  membershipId: string,
+  organizationId: string,
+  name: string,
+  membership: typeof Membership.Type,
+): OrganizationMembershipView {
+  return {
+    membershipId,
+    id: organizationId,
+    name,
+    role: membership.role?.slug ?? membership.roles?.[0]?.slug ?? "member",
+  };
+}
+
+function organizationMembers(input: unknown): readonly OrganizationMemberView[] {
+  const decoded = decodeMemberships(input);
+  if (decoded._tag === "None") return [];
+  return decoded.value.data.flatMap((membership): readonly OrganizationMemberView[] => {
+    const membershipId = membership.id;
+    const user = membership.user;
+    const userId = membership.user_id ?? user?.id;
+    if (membershipId === undefined || user === undefined || userId === undefined) return [];
+    const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+    return [
+      {
+        membershipId,
+        userId,
+        name: name === "" ? user.email : name,
+        email: user.email,
+        role: membership.role?.slug ?? membership.roles?.[0]?.slug ?? "member",
+        status: membership.status ?? "active",
+      },
+    ];
+  });
 }
 
 function firstOrganizationId(input: unknown): string | null {
@@ -86,6 +154,41 @@ export class Organizations extends Context.Service<
       userId: string,
       name: string,
     ) => Effect.Effect<OrganizationMembershipView, WorkosRequestError | OrganizationCreateError>;
+    readonly renameForUser: (
+      userId: string,
+      organizationId: string,
+      name: string,
+    ) => Effect.Effect<
+      OrganizationMembershipView,
+      WorkosRequestError | ForbiddenError | OrganizationUpdateError
+    >;
+    readonly inviteForUser: (
+      userId: string,
+      organizationId: string,
+      email: string,
+    ) => Effect.Effect<
+      OrganizationInvitationView,
+      WorkosRequestError | ForbiddenError | OrganizationInviteError
+    >;
+    readonly settingsForUser: (
+      userId: string,
+      organizationId: string,
+    ) => Effect.Effect<OrganizationSettingsView, WorkosRequestError | ForbiddenError>;
+    readonly removeMemberForUser: (
+      userId: string,
+      organizationId: string,
+      membershipId: string,
+    ) => Effect.Effect<
+      { readonly membershipId: string },
+      WorkosRequestError | ForbiddenError | OrganizationMemberRemoveError
+    >;
+    readonly leaveForUser: (
+      userId: string,
+      organizationId: string,
+    ) => Effect.Effect<
+      { readonly nextOrganizationId: string },
+      WorkosRequestError | ForbiddenError | LastOrganizationError | OrganizationLeaveError
+    >;
   }
 >()("@tunnel/core/auth/Organizations") {}
 
@@ -148,6 +251,58 @@ export const organizationsLayer = Layer.effect(
         : null;
     });
 
+    const membershipForUser = Effect.fn("organizations.membership_for_user")(function* (
+      userId: string,
+      organizationId: string,
+    ) {
+      const memberships = yield* listForUser(userId);
+      return memberships.find((membership) => membership.id === organizationId) ?? null;
+    });
+
+    const membersForOrganization = Effect.fn("organizations.members_for_organization")(function* (
+      organizationId: string,
+    ) {
+      return organizationMembers(
+        yield* workos.request(
+          `/user_management/organization_memberships?organization_id=${encodeURIComponent(organizationId)}&statuses[]=active`,
+        ),
+      );
+    });
+
+    const settingsForUser = Effect.fn("organizations.settings_for_user")(function* (
+      userId: string,
+      organizationId: string,
+    ) {
+      const memberships = yield* listForUser(userId);
+      const organization = memberships.find((membership) => membership.id === organizationId);
+      if (organization === undefined) return yield* Effect.fail(new ForbiddenError({}));
+      return {
+        organization,
+        members: yield* membersForOrganization(organizationId),
+        organizationCount: memberships.length,
+      };
+    });
+
+    const removeMemberForUser = Effect.fn("organizations.remove_member_for_user")(function* (
+      userId: string,
+      organizationId: string,
+      membershipId: string,
+    ) {
+      const settings = yield* settingsForUser(userId, organizationId);
+      const member = settings.members.find((candidate) => candidate.membershipId === membershipId);
+      if (member === undefined || member.userId === userId)
+        return yield* Effect.fail(new ForbiddenError({}));
+      const result = yield* Effect.result(
+        workos.request(
+          `/user_management/organization_memberships/${encodeURIComponent(membershipId)}`,
+          { method: "DELETE" },
+        ),
+      );
+      if (result._tag === "Failure")
+        return yield* Effect.fail(new OrganizationMemberRemoveError({}));
+      return { membershipId };
+    });
+
     const createForUser = Effect.fn("organizations.create_for_user")(function* (
       userId: string,
       name: string,
@@ -160,11 +315,17 @@ export const organizationsLayer = Layer.effect(
           });
           const decoded = decodeOrganization(value);
           if (decoded._tag === "None") return yield* Effect.fail(new OrganizationCreateError({}));
-          yield* workos.request("/user_management/organization_memberships", {
-            method: "POST",
-            body: JSON.stringify({ user_id: userId, organization_id: decoded.value.id }),
-          });
-          return { id: decoded.value.id, name, role: "member" };
+          const membershipValue = yield* workos.request(
+            "/user_management/organization_memberships",
+            {
+              method: "POST",
+              body: JSON.stringify({ user_id: userId, organization_id: decoded.value.id }),
+            },
+          );
+          const membership = decodeMembership(membershipValue);
+          if (membership._tag === "None" || membership.value.id === undefined)
+            return yield* Effect.fail(new OrganizationCreateError({}));
+          return membershipView(membership.value.id, decoded.value.id, name, membership.value);
         }),
       );
       if (result._tag === "Failure") {
@@ -173,6 +334,68 @@ export const organizationsLayer = Layer.effect(
         return yield* Effect.fail(new OrganizationCreateError({}));
       }
       return result.success;
+    });
+
+    const renameForUser = Effect.fn("organizations.rename_for_user")(function* (
+      userId: string,
+      organizationId: string,
+      name: string,
+    ) {
+      const membership = yield* membershipForUser(userId, organizationId);
+      if (membership === null) return yield* Effect.fail(new ForbiddenError({}));
+      const result = yield* Effect.result(
+        workos.request(`/organizations/${encodeURIComponent(organizationId)}`, {
+          method: "PUT",
+          body: JSON.stringify({ name }),
+        }),
+      );
+      if (result._tag === "Failure") return yield* Effect.fail(new OrganizationUpdateError({}));
+      const organization = decodeOrganization(result.success);
+      if (organization._tag === "None") return yield* Effect.fail(new OrganizationUpdateError({}));
+      return { ...membership, name: organization.value.name ?? name };
+    });
+
+    const inviteForUser = Effect.fn("organizations.invite_for_user")(function* (
+      userId: string,
+      organizationId: string,
+      email: string,
+    ) {
+      if ((yield* membershipForUser(userId, organizationId)) === null)
+        return yield* Effect.fail(new ForbiddenError({}));
+      const result = yield* Effect.result(
+        workos.request("/user_management/invitations", {
+          method: "POST",
+          body: JSON.stringify({
+            email,
+            organization_id: organizationId,
+            role_slug: "member",
+            inviter_user_id: userId,
+          }),
+        }),
+      );
+      if (result._tag === "Failure") return yield* Effect.fail(new OrganizationInviteError({}));
+      const invitation = decodeInvitation(result.success);
+      if (invitation._tag === "None") return yield* Effect.fail(new OrganizationInviteError({}));
+      return invitation.value;
+    });
+
+    const leaveForUser = Effect.fn("organizations.leave_for_user")(function* (
+      userId: string,
+      organizationId: string,
+    ) {
+      const memberships = yield* listForUser(userId);
+      const membership = memberships.find((item) => item.id === organizationId);
+      if (membership === undefined) return yield* Effect.fail(new ForbiddenError({}));
+      const next = memberships.find((item) => item.id !== organizationId);
+      if (next === undefined) return yield* Effect.fail(new LastOrganizationError({}));
+      const result = yield* Effect.result(
+        workos.request(
+          `/user_management/organization_memberships/${encodeURIComponent(membership.membershipId)}`,
+          { method: "DELETE" },
+        ),
+      );
+      if (result._tag === "Failure") return yield* Effect.fail(new OrganizationLeaveError({}));
+      return { nextOrganizationId: next.id };
     });
 
     const ensureForUser = Effect.fn("organizations.ensure_for_user")(function* (userId: string) {
@@ -214,6 +437,16 @@ export const organizationsLayer = Layer.effect(
       return organizationId;
     });
 
-    return Organizations.of({ ensureForUser, listForUser, forMember, createForUser });
+    return Organizations.of({
+      ensureForUser,
+      listForUser,
+      forMember,
+      createForUser,
+      renameForUser,
+      inviteForUser,
+      settingsForUser,
+      removeMemberForUser,
+      leaveForUser,
+    });
   }),
 );

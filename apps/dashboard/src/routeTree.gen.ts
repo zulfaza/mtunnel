@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as DomainsRouteImport } from './routes/domains'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as OrganizationsRouteImport } from './routes/organizations'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as TunnelsRouteImport } from './routes/tunnels'
 import { Route as AssetsDocumentIdRouteImport } from './routes/assets/$documentId'
@@ -36,6 +37,11 @@ const DomainsRoute = DomainsRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrganizationsRoute = OrganizationsRouteImport.update({
+  id: '/organizations',
+  path: '/organizations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RegisterRoute = RegisterRouteImport.update({
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/callback': typeof CallbackRoute
   '/domains': typeof DomainsRoute
   '/login': typeof LoginRoute
+  '/organizations': typeof OrganizationsRoute
   '/register': typeof RegisterRoute
   '/tunnels': typeof TunnelsRoute
   '/assets/$documentId': typeof AssetsDocumentIdRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/callback': typeof CallbackRoute
   '/domains': typeof DomainsRoute
   '/login': typeof LoginRoute
+  '/organizations': typeof OrganizationsRoute
   '/register': typeof RegisterRoute
   '/tunnels': typeof TunnelsRoute
   '/assets/$documentId': typeof AssetsDocumentIdRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/callback': typeof CallbackRoute
   '/domains': typeof DomainsRoute
   '/login': typeof LoginRoute
+  '/organizations': typeof OrganizationsRoute
   '/register': typeof RegisterRoute
   '/tunnels': typeof TunnelsRoute
   '/assets/$documentId': typeof AssetsDocumentIdRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/callback'
     | '/domains'
     | '/login'
+    | '/organizations'
     | '/register'
     | '/tunnels'
     | '/assets/$documentId'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/callback'
     | '/domains'
     | '/login'
+    | '/organizations'
     | '/register'
     | '/tunnels'
     | '/assets/$documentId'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/callback'
     | '/domains'
     | '/login'
+    | '/organizations'
     | '/register'
     | '/tunnels'
     | '/assets/$documentId'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   CallbackRoute: typeof CallbackRoute
   DomainsRoute: typeof DomainsRoute
   LoginRoute: typeof LoginRoute
+  OrganizationsRoute: typeof OrganizationsRoute
   RegisterRoute: typeof RegisterRoute
   TunnelsRoute: typeof TunnelsRoute
   AssetsDocumentIdRoute: typeof AssetsDocumentIdRoute
@@ -162,6 +175,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/organizations': {
+      id: '/organizations'
+      path: '/organizations'
+      fullPath: '/organizations'
+      preLoaderRoute: typeof OrganizationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register': {
@@ -200,6 +220,7 @@ const rootRouteChildren: RootRouteChildren = {
   CallbackRoute: CallbackRoute,
   DomainsRoute: DomainsRoute,
   LoginRoute: LoginRoute,
+  OrganizationsRoute: OrganizationsRoute,
   RegisterRoute: RegisterRoute,
   TunnelsRoute: TunnelsRoute,
   AssetsDocumentIdRoute: AssetsDocumentIdRoute,

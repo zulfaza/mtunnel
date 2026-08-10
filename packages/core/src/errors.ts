@@ -146,6 +146,46 @@ export class OrganizationCreateError extends Schema.TaggedErrorClass<Organizatio
   readonly code = "organization_create_failed";
 }
 
+export class OrganizationUpdateError extends Schema.TaggedErrorClass<OrganizationUpdateError>()(
+  "OrganizationUpdateError",
+  {},
+) {
+  readonly status = 502;
+  readonly code = "organization_update_failed";
+}
+
+export class OrganizationInviteError extends Schema.TaggedErrorClass<OrganizationInviteError>()(
+  "OrganizationInviteError",
+  {},
+) {
+  readonly status = 502;
+  readonly code = "organization_invite_failed";
+}
+
+export class OrganizationLeaveError extends Schema.TaggedErrorClass<OrganizationLeaveError>()(
+  "OrganizationLeaveError",
+  {},
+) {
+  readonly status = 502;
+  readonly code = "organization_leave_failed";
+}
+
+export class OrganizationMemberRemoveError extends Schema.TaggedErrorClass<OrganizationMemberRemoveError>()(
+  "OrganizationMemberRemoveError",
+  {},
+) {
+  readonly status = 502;
+  readonly code = "organization_member_remove_failed";
+}
+
+export class LastOrganizationError extends Schema.TaggedErrorClass<LastOrganizationError>()(
+  "LastOrganizationError",
+  {},
+) {
+  readonly status = 409;
+  readonly code = "last_organization";
+}
+
 export type CoreError =
   | UnauthorizedError
   | ForbiddenError
@@ -162,7 +202,12 @@ export type CoreError =
   | DomainsNotConfiguredError
   | PreviewLimitError
   | InvalidManifestError
-  | OrganizationCreateError;
+  | OrganizationCreateError
+  | OrganizationUpdateError
+  | OrganizationInviteError
+  | OrganizationLeaveError
+  | OrganizationMemberRemoveError
+  | LastOrganizationError;
 
 export interface ErrorResponseParts {
   readonly status: number;

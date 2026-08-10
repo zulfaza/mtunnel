@@ -118,11 +118,36 @@ export const TunnelStatusView = Schema.Struct({
 export type TunnelStatusView = Schema.Schema.Type<typeof TunnelStatusView>;
 
 export const OrganizationMembershipView = Schema.Struct({
+  membershipId: Schema.String,
   id: Schema.String,
   name: Schema.String,
-  role: Schema.optionalKey(Schema.String),
+  role: Schema.String,
 });
 export type OrganizationMembershipView = Schema.Schema.Type<typeof OrganizationMembershipView>;
+
+export const OrganizationMemberView = Schema.Struct({
+  membershipId: Schema.String,
+  userId: Schema.String,
+  name: Schema.String,
+  email: Schema.String,
+  role: Schema.String,
+  status: Schema.String,
+});
+export type OrganizationMemberView = Schema.Schema.Type<typeof OrganizationMemberView>;
+
+export const OrganizationSettingsView = Schema.Struct({
+  organization: OrganizationMembershipView,
+  members: Schema.Array(OrganizationMemberView),
+  organizationCount: Schema.Number,
+});
+export type OrganizationSettingsView = Schema.Schema.Type<typeof OrganizationSettingsView>;
+
+export const OrganizationInvitationView = Schema.Struct({
+  id: Schema.String,
+  email: Schema.String,
+  state: Schema.String,
+});
+export type OrganizationInvitationView = Schema.Schema.Type<typeof OrganizationInvitationView>;
 
 export const OrganizationLimits = Schema.Struct({
   maximumCustomDomains: Schema.NullOr(Schema.Number),
@@ -146,13 +171,45 @@ export const DomainAddRequest = Schema.Struct({
 });
 export type DomainAddRequest = Schema.Schema.Type<typeof DomainAddRequest>;
 
-export const OrganizationCreateRequest = Schema.Struct({
-  name: Schema.String.pipe(
-    Schema.check(Schema.isMinLength(1)),
-    Schema.check(Schema.isMaxLength(100)),
-  ),
-});
+const OrganizationId = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1)),
+  Schema.check(Schema.isMaxLength(255)),
+);
+const OrganizationName = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1)),
+  Schema.check(Schema.isMaxLength(100)),
+);
+const EmailAddress = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(3)),
+  Schema.check(Schema.isMaxLength(254)),
+  Schema.check(Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/u)),
+);
+
+export const OrganizationCreateRequest = Schema.Struct({ name: OrganizationName });
 export type OrganizationCreateRequest = Schema.Schema.Type<typeof OrganizationCreateRequest>;
+
+export const OrganizationRenameRequest = Schema.Struct({
+  organizationId: OrganizationId,
+  name: OrganizationName,
+});
+export type OrganizationRenameRequest = Schema.Schema.Type<typeof OrganizationRenameRequest>;
+
+export const OrganizationInviteRequest = Schema.Struct({
+  organizationId: OrganizationId,
+  email: EmailAddress,
+});
+export type OrganizationInviteRequest = Schema.Schema.Type<typeof OrganizationInviteRequest>;
+
+export const OrganizationLeaveRequest = Schema.Struct({ organizationId: OrganizationId });
+export type OrganizationLeaveRequest = Schema.Schema.Type<typeof OrganizationLeaveRequest>;
+
+export const OrganizationMemberRemoveRequest = Schema.Struct({
+  organizationId: OrganizationId,
+  membershipId: OrganizationId,
+});
+export type OrganizationMemberRemoveRequest = Schema.Schema.Type<
+  typeof OrganizationMemberRemoveRequest
+>;
 
 export const PreviewCreateRequest = Schema.Struct({
   name: Schema.String.pipe(

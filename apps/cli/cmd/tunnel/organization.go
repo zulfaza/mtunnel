@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"text/tabwriter"
 
@@ -17,6 +18,14 @@ import (
 type organization struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+type organizationMember struct {
+	MembershipID string `json:"membershipId"`
+	Name         string `json:"name"`
+	Email        string `json:"email"`
+	Role         string `json:"role"`
+	Status       string `json:"status"`
 }
 
 func executeOrganizationHTTP(o *rootOptions, method, path string, body []byte) ([]byte, error) {
@@ -90,6 +99,23 @@ func printOrganizationList(out io.Writer, organizations []organization, currentI
 	return writer.Flush()
 }
 
+func printOrganizationMembers(out io.Writer, members []organizationMember) error {
+	if len(members) == 0 {
+		_, err := fmt.Fprintln(out, "No members.")
+		return err
+	}
+	writer := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
+	if _, err := fmt.Fprintln(writer, "NAME\tEMAIL\tROLE\tSTATUS\tMEMBERSHIP"); err != nil {
+		return err
+	}
+	for _, member := range members {
+		if _, err := fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n", member.Name, member.Email, member.Role, member.Status, member.MembershipID); err != nil {
+			return err
+		}
+	}
+	return writer.Flush()
+}
+
 func newOrganizationCmd(o *rootOptions) *cobra.Command {
 	organizationCmd := &cobra.Command{Use: "org", Aliases: []string{"organization"}, Short: "Manage organizations"}
 	organizationCmd.AddCommand(
@@ -150,6 +176,84 @@ func newOrganizationCmd(o *rootOptions) *cobra.Command {
 				return err
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Switched to organization %s (%s).\n", matched.Name, matched.ID)
+			return err
+		}},
+		&cobra.Command{Use: "rename <id> <name>", Short: "Rename an organization", Args: exactArgsWithHelp(2), RunE: func(cmd *cobra.Command, args []string) error {
+			body, err := json.Marshal(struct {
+				Name string `json:"name"`
+			}{args[1]})
+			if err != nil {
+				return err
+			}
+			response, err := executeOrganizationHTTP(o, http.MethodPut, "/api/v1/organizations/"+url.PathEscape(args[0]), body)
+			if err != nil {
+				return fmt.Errorf("rename organization: %w", err)
+			}
+			var updated organization
+			if err := json.Unmarshal(response, &updated); err != nil {
+				return fmt.Errorf("decode organization: %w", err)
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Renamed organization to %s (%s).\n", updated.Name, updated.ID)
+			return err
+		}},
+		&cobra.Command{Use: "invite <id> <email>", Short: "Invite an organization member", Args: exactArgsWithHelp(2), RunE: func(cmd *cobra.Command, args []string) error {
+			body, err := json.Marshal(struct {
+				Email string `json:"email"`
+			}{args[1]})
+			if err != nil {
+				return err
+			}
+			_, err = executeOrganizationHTTP(o, http.MethodPost, "/api/v1/organizations/"+url.PathEscape(args[0])+"/invitations", body)
+			if err != nil {
+				return fmt.Errorf("invite organization member: %w", err)
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Invited %s to organization %s.\n", args[1], args[0])
+			return err
+		}},
+		&cobra.Command{Use: "members <id>", Short: "List organization members", Args: exactArgsWithHelp(1), RunE: func(cmd *cobra.Command, args []string) error {
+			response, err := executeOrganizationHTTP(o, http.MethodGet, "/api/v1/organizations/"+url.PathEscape(args[0])+"/members", nil)
+			if err != nil {
+				return fmt.Errorf("list organization members: %w", err)
+			}
+			var result struct {
+				Members []organizationMember `json:"members"`
+			}
+			if err := json.Unmarshal(response, &result); err != nil {
+				return fmt.Errorf("decode organization members: %w", err)
+			}
+			return printOrganizationMembers(cmd.OutOrStdout(), result.Members)
+		}},
+		&cobra.Command{Use: "remove-member <id> <membership-id>", Short: "Remove an organization member", Args: exactArgsWithHelp(2), RunE: func(cmd *cobra.Command, args []string) error {
+			_, err := executeOrganizationHTTP(o, http.MethodDelete, "/api/v1/organizations/"+url.PathEscape(args[0])+"/members/"+url.PathEscape(args[1]), nil)
+			if err != nil {
+				return fmt.Errorf("remove organization member: %w", err)
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Removed membership %s from organization %s.\n", args[1], args[0])
+			return err
+		}},
+		&cobra.Command{Use: "leave <id>", Short: "Leave an organization", Args: exactArgsWithHelp(1), RunE: func(cmd *cobra.Command, args []string) error {
+			response, err := executeOrganizationHTTP(o, http.MethodDelete, "/api/v1/organizations/"+url.PathEscape(args[0])+"/membership", nil)
+			if err != nil {
+				return fmt.Errorf("leave organization: %w", err)
+			}
+			var result struct {
+				CurrentOrganizationID string `json:"currentOrganizationId"`
+			}
+			if err := json.Unmarshal(response, &result); err != nil {
+				return fmt.Errorf("decode organization selection: %w", err)
+			}
+			if result.CurrentOrganizationID == "" {
+				return fmt.Errorf("leave organization: server returned no current organization")
+			}
+			cfg, err := o.loadConfig()
+			if err != nil {
+				return err
+			}
+			cfg.OrganizationID = result.CurrentOrganizationID
+			if err := config.Save(o.config, cfg); err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Left organization %s. Current organization: %s.\n", args[0], result.CurrentOrganizationID)
 			return err
 		}},
 	)

@@ -12,7 +12,16 @@ import {
   handleDomainDelete,
   handleDomainList,
 } from "./domains.js";
-import { handleOrganizationCreate, handleOrganizationList } from "./organizations.js";
+import {
+  handleOrganizationCreate,
+  handleOrganizationInvite,
+  handleOrganizationLeave,
+  handleOrganizationList,
+  handleOrganizationMemberRemove,
+  handleOrganizationMembers,
+  handleOrganizationRename,
+  organizationRoute,
+} from "./organizations.js";
 import { handleTunnelStatus } from "./tunnels.js";
 import {
   handlePreviewCreate,
@@ -50,6 +59,22 @@ export async function handleApi(
     return handleOrganizationList(request, env);
   if (request.method === "POST" && url.pathname === "/api/v1/organizations")
     return handleOrganizationCreate(request, env);
+  const organization = organizationRoute(url.pathname);
+  if (request.method === "PUT" && organization?.action === "detail")
+    return handleOrganizationRename(request, env, organization.organizationId);
+  if (request.method === "POST" && organization?.action === "invitations")
+    return handleOrganizationInvite(request, env, organization.organizationId);
+  if (request.method === "DELETE" && organization?.action === "membership")
+    return handleOrganizationLeave(request, env, organization.organizationId);
+  if (request.method === "GET" && organization?.action === "members")
+    return handleOrganizationMembers(request, env, organization.organizationId);
+  if (request.method === "DELETE" && organization?.action === "member")
+    return handleOrganizationMemberRemove(
+      request,
+      env,
+      organization.organizationId,
+      organization.membershipId,
+    );
   const requestedDomainHostname = domainHostname(url.pathname);
   if (request.method === "DELETE" && requestedDomainHostname !== null)
     return handleDomainDelete(request, env, requestedDomainHostname);
@@ -103,6 +128,15 @@ export function trackedApiEvent(request: Request, url: URL): TrackedEvent | null
     return { event: "preview_visibility_updated" };
   if (request.method === "POST" && url.pathname === "/api/v1/organizations")
     return { event: "organization_create_requested" };
+  const organization = organizationRoute(url.pathname);
+  if (request.method === "PUT" && organization?.action === "detail")
+    return { event: "organization_updated" };
+  if (request.method === "POST" && organization?.action === "invitations")
+    return { event: "organization_invitation_sent" };
+  if (request.method === "DELETE" && organization?.action === "membership")
+    return { event: "organization_left" };
+  if (request.method === "DELETE" && organization?.action === "member")
+    return { event: "organization_member_removed" };
   if (request.method === "DELETE" && domainHostname(url.pathname) !== null)
     return { event: "custom_domain_delete_requested" };
   const domainRequest = domainAction(url.pathname);

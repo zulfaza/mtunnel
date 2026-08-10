@@ -17,7 +17,16 @@
     "mt domain verify dev.example.com",
     "mt domain status dev.example.com",
   ].join("\n");
-  const ORG_COMMANDS = ["mt org list", 'mt org create "Acme Inc"', "mt org use org_123"].join("\n");
+  const ORG_COMMANDS = [
+    "mt org list",
+    'mt org create "Acme Inc"',
+    "mt org use org_123",
+    'mt org rename org_123 "Acme Labs"',
+    "mt org invite org_123 member@example.com",
+    "mt org members org_123",
+    "mt org remove-member org_123 om_123",
+    "mt org leave org_123",
+  ].join("\n");
 </script>
 
 <SiteHead {...SITE_METADATA.pages.docs} robots="noindex, nofollow" />
@@ -144,7 +153,9 @@
       <div class="code">
         <i>$ </i><b>mt org list</b><br />
         <i>$ </i><b>mt org create "Acme Inc"</b><br />
-        <i>$ </i><b>mt org use org_123</b>
+        <i>$ </i><b>mt org use org_123</b><br />
+        <i>$ </i><b>mt org invite org_123 member@example.com</b>
+        <br /><i>$ </i><b>mt org members org_123</b>
         <CopyButton text={ORG_COMMANDS} />
       </div>
       <p>
@@ -153,7 +164,9 @@
         never auto-join. <code>mt org create</code> makes a new organization and switches to it;
         <code>mt org list</code> shows every organization you belong to;
         <code>mt org use &lt;id&gt;</code> switches which one subsequent commands (tunnels, domains) act
-        on.
+        on. <code>mt org rename</code>, <code>mt org invite</code>, <code>mt org members</code>,
+        <code>mt org remove-member</code>, and <code>mt org leave</code>
+        manage membership details. You cannot leave your last organization.
       </p>
     </section>
 
