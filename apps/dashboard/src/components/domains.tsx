@@ -6,11 +6,23 @@ import { addDomain, deleteDomain, refreshDomain, verifyDomain } from "../server/
 import { SectionHeading, Shell } from "./shell.js";
 import { ActionMenu, ActionMenuItem } from "./ui/action-menu.js";
 import { Button } from "./ui/button.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog.js";
 import { Input } from "./ui/input.js";
 import { Label } from "./ui/label.js";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.js";
 
 type Domain = Schemas.DomainView;
+type DeleteDomainState =
+  | { readonly status: "idle" }
+  | { readonly status: "confirming"; readonly domain: Domain }
+  | { readonly status: "deleting"; readonly domain: Domain };
 
 export function DomainsPage({
   initialDomains,
@@ -23,6 +35,7 @@ export function DomainsPage({
   const [tunnelId, setTunnelId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deleteState, setDeleteState] = useState<DeleteDomainState>({ status: "idle" });
 
   const failure = (cause: unknown): void => {
     if (cause instanceof Error && cause.message === "signed_out") {
@@ -62,13 +75,16 @@ export function DomainsPage({
       .catch(failure);
   };
 
-  const remove = (domain: Domain): void => {
-    if (!window.confirm(`Delete ${domain.hostname}? This cannot be undone.`)) return;
+  const remove = (): void => {
+    if (deleteState.status !== "confirming") return;
+    const domain = deleteState.domain;
+    setDeleteState({ status: "deleting", domain });
     void deleteDomain({ data: { hostname: domain.hostname } })
       .then(() =>
         setDomains((current) => current.filter((item) => item.hostname !== domain.hostname)),
       )
-      .catch(failure);
+      .catch(failure)
+      .finally(() => setDeleteState({ status: "idle" }));
   };
 
   return (
@@ -150,7 +166,10 @@ export function DomainsPage({
                               <RefreshCw /> Refresh
                             </ActionMenuItem>
                           )}
-                          <ActionMenuItem destructive onSelect={() => remove(domain)}>
+                          <ActionMenuItem
+                            destructive
+                            onSelect={() => setDeleteState({ status: "confirming", domain })}
+                          >
                             <Trash2 /> Delete domain
                           </ActionMenuItem>
                         </ActionMenu>
@@ -163,7 +182,46 @@ export function DomainsPage({
           )}
         </div>
       </section>
+      <DeleteDomainDialog
+        onClose={() => setDeleteState({ status: "idle" })}
+        onConfirm={remove}
+        state={deleteState}
+      />
     </Shell>
+  );
+}
+
+function DeleteDomainDialog({
+  state,
+  onClose,
+  onConfirm,
+}: {
+  readonly state: DeleteDomainState;
+  readonly onClose: () => void;
+  readonly onConfirm: () => void;
+}): ReactNode {
+  const domain = state.status === "idle" ? null : state.domain;
+  const deleting = state.status === "deleting";
+
+  return (
+    <Dialog onOpenChange={(open) => !open && !deleting && onClose()} open={domain !== null}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete domain?</DialogTitle>
+          <DialogDescription>
+            This will permanently delete “{domain?.hostname}”. This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button disabled={deleting} onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button disabled={deleting} onClick={onConfirm} type="button" variant="destructive">
+            <Trash2 /> {deleting ? "Deleting…" : "Delete domain"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

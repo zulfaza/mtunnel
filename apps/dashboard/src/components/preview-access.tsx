@@ -1,4 +1,4 @@
-import { Copy, KeyRound, Trash2, UserRoundX } from "lucide-react";
+import { Check, Copy, KeyRound, Trash2, UserRoundX } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Schemas } from "@tunnel/core";
 import { generateAccessCode } from "../lib/access-code.js";
@@ -13,11 +13,20 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog.js";
 
 type Preview = Schemas.PreviewView;
+type DeleteCodeState =
+  | { readonly status: "idle" }
+  | { readonly status: "confirming"; readonly id: string }
+  | { readonly status: "deleting"; readonly id: string };
+type RevokeSessionState =
+  | { readonly status: "idle" }
+  | { readonly status: "confirming"; readonly id: string }
+  | { readonly status: "revoking"; readonly id: string };
 
 export function PreviewAccessDialog({
   preview,
@@ -34,11 +43,17 @@ export function PreviewAccessDialog({
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [deleteCodeState, setDeleteCodeState] = useState<DeleteCodeState>({ status: "idle" });
+  const [revokeSessionState, setRevokeSessionState] = useState<RevokeSessionState>({
+    status: "idle",
+  });
 
   useEffect(() => {
     setAccess(null);
     setGeneratedCode(null);
     setCopied(false);
+    setDeleteCodeState({ status: "idle" });
+    setRevokeSessionState({ status: "idle" });
     if (preview === null) return;
     void previewAccess({ data: { previewId: preview.id } })
       .then(setAccess)
@@ -59,8 +74,10 @@ export function PreviewAccessDialog({
       .finally(() => setBusy(false));
   };
 
-  const deleteCode = (id: string): void => {
-    if (preview === null || !window.confirm("Delete this unused code?")) return;
+  const deleteCode = (): void => {
+    if (preview === null || deleteCodeState.status !== "confirming") return;
+    const id = deleteCodeState.id;
+    setDeleteCodeState({ status: "deleting", id });
     setBusy(true);
     void deletePreviewAccessCode({ data: { previewId: preview.id, id } })
       .then(() => {
@@ -72,11 +89,16 @@ export function PreviewAccessDialog({
         );
       })
       .catch(onFailure)
-      .finally(() => setBusy(false));
+      .finally(() => {
+        setBusy(false);
+        setDeleteCodeState({ status: "idle" });
+      });
   };
 
-  const revokeSession = (id: string): void => {
-    if (preview === null || !window.confirm("Revoke this active session?")) return;
+  const revokeSession = (): void => {
+    if (preview === null || revokeSessionState.status !== "confirming") return;
+    const id = revokeSessionState.id;
+    setRevokeSessionState({ status: "revoking", id });
     setBusy(true);
     void revokePreviewAccessSession({ data: { previewId: preview.id, id } })
       .then(() =>
@@ -87,7 +109,10 @@ export function PreviewAccessDialog({
         ),
       )
       .catch(onFailure)
-      .finally(() => setBusy(false));
+      .finally(() => {
+        setBusy(false);
+        setRevokeSessionState({ status: "idle" });
+      });
   };
 
   const copyCode = (): void => {
@@ -123,8 +148,14 @@ export function PreviewAccessDialog({
               <code className="min-w-0 flex-1 break-all text-sm text-accent-text">
                 {generatedCode}
               </code>
-              <Button onClick={copyCode} size="icon" title={copied ? "Copied" : "Copy code"}>
-                <Copy />
+              <Button
+                aria-label={copied ? "Copied" : "Copy code"}
+                className={copied ? "border-accent-text text-accent-text" : undefined}
+                onClick={copyCode}
+                size="icon"
+                title={copied ? "Copied" : "Copy code"}
+              >
+                {copied ? <Check className="animate-copy-feedback" /> : <Copy />}
               </Button>
             </div>
           </div>
@@ -134,7 +165,7 @@ export function PreviewAccessDialog({
           empty="No unused codes."
           heading="Unused codes"
           items={access?.codes ?? null}
-          onRemove={deleteCode}
+          onRemove={(id) => setDeleteCodeState({ status: "confirming", id })}
           removeIcon={<Trash2 />}
           removeLabel="Delete code"
         />
@@ -143,10 +174,86 @@ export function PreviewAccessDialog({
           empty="No active sessions."
           heading="Active sessions"
           items={access?.sessions ?? null}
-          onRemove={revokeSession}
+          onRemove={(id) => setRevokeSessionState({ status: "confirming", id })}
           removeIcon={<UserRoundX />}
           removeLabel="Revoke session"
         />
+        <DeleteCodeDialog
+          onClose={() => setDeleteCodeState({ status: "idle" })}
+          onConfirm={deleteCode}
+          state={deleteCodeState}
+        />
+        <RevokeSessionDialog
+          onClose={() => setRevokeSessionState({ status: "idle" })}
+          onConfirm={revokeSession}
+          state={revokeSessionState}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RevokeSessionDialog({
+  state,
+  onClose,
+  onConfirm,
+}: {
+  readonly state: RevokeSessionState;
+  readonly onClose: () => void;
+  readonly onConfirm: () => void;
+}): ReactNode {
+  const revoking = state.status === "revoking";
+
+  return (
+    <Dialog onOpenChange={(open) => !open && !revoking && onClose()} open={state.status !== "idle"}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Revoke active session?</DialogTitle>
+          <DialogDescription>
+            This session will immediately lose access to the preview.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button disabled={revoking} onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button disabled={revoking} onClick={onConfirm} type="button" variant="destructive">
+            <UserRoundX /> {revoking ? "Revoking…" : "Revoke session"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteCodeDialog({
+  state,
+  onClose,
+  onConfirm,
+}: {
+  readonly state: DeleteCodeState;
+  readonly onClose: () => void;
+  readonly onConfirm: () => void;
+}): ReactNode {
+  const deleting = state.status === "deleting";
+
+  return (
+    <Dialog onOpenChange={(open) => !open && !deleting && onClose()} open={state.status !== "idle"}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete access code?</DialogTitle>
+          <DialogDescription>
+            This unused code will stop granting preview access. This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button disabled={deleting} onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button disabled={deleting} onClick={onConfirm} type="button" variant="destructive">
+            <Trash2 /> {deleting ? "Deleting…" : "Delete code"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

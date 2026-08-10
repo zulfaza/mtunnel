@@ -8,9 +8,21 @@ import { SectionHeading, Shell } from "./shell.js";
 import { ActionMenu, ActionMenuItem } from "./ui/action-menu.js";
 import { Badge } from "./ui/badge.js";
 import { Button } from "./ui/button.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog.js";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.js";
 
 type Preview = Schemas.PreviewView;
+type DeleteVersionState =
+  | { readonly status: "idle" }
+  | { readonly status: "confirming"; readonly preview: Preview }
+  | { readonly status: "deleting"; readonly preview: Preview };
 
 const VISIBILITY_VARIANT: Record<Preview["visibility"], "accent" | "default" | "destructive"> = {
   public: "accent",
@@ -31,16 +43,16 @@ export function PreviewDetailPage({
 }): ReactNode {
   const navigate = useNavigate();
   const [currentVersions, setCurrentVersions] = useState(versions);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteState, setDeleteState] = useState<DeleteVersionState>({ status: "idle" });
   const [error, setError] = useState<string | null>(null);
   const latest = currentVersions[0];
   if (latest === undefined) return null;
   const repositoryUrl = repositoryHref(latest);
 
-  const removeVersion = async (preview: Preview): Promise<void> => {
-    if (!window.confirm(`Delete ${preview.name} v${preview.version}? This cannot be undone.`))
-      return;
-    setDeletingId(preview.id);
+  const removeVersion = async (): Promise<void> => {
+    if (deleteState.status !== "confirming") return;
+    const preview = deleteState.preview;
+    setDeleteState({ status: "deleting", preview });
     setError(null);
     try {
       await deletePreview({ data: { id: preview.id } });
@@ -57,7 +69,7 @@ export function PreviewDetailPage({
       }
       setError(cause instanceof Error ? cause.message : "Delete failed.");
     } finally {
-      setDeletingId(null);
+      setDeleteState({ status: "idle" });
     }
   };
 
@@ -160,8 +172,8 @@ export function PreviewDetailPage({
                         </ActionMenuItem>
                         <ActionMenuItem
                           destructive
-                          disabled={deletingId !== null}
-                          onSelect={() => void removeVersion(preview)}
+                          disabled={deleteState.status !== "idle"}
+                          onSelect={() => setDeleteState({ status: "confirming", preview })}
                         >
                           <Trash2 /> Delete version
                         </ActionMenuItem>
@@ -174,6 +186,46 @@ export function PreviewDetailPage({
           </Table>
         </div>
       </section>
+      <DeleteVersionDialog
+        onClose={() => setDeleteState({ status: "idle" })}
+        onConfirm={() => void removeVersion()}
+        state={deleteState}
+      />
     </Shell>
+  );
+}
+
+function DeleteVersionDialog({
+  state,
+  onClose,
+  onConfirm,
+}: {
+  readonly state: DeleteVersionState;
+  readonly onClose: () => void;
+  readonly onConfirm: () => void;
+}): ReactNode {
+  const preview = state.status === "idle" ? null : state.preview;
+  const deleting = state.status === "deleting";
+
+  return (
+    <Dialog onOpenChange={(open) => !open && !deleting && onClose()} open={preview !== null}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete version?</DialogTitle>
+          <DialogDescription>
+            This will permanently delete “{preview?.name}” v{preview?.version} and its uploaded
+            files. This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button disabled={deleting} onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button disabled={deleting} onClick={onConfirm} type="button" variant="destructive">
+            <Trash2 /> {deleting ? "Deleting…" : "Delete version"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
