@@ -1,19 +1,10 @@
 {
-  "code_actions_on_save": {
+  "code_actions_on_format": {
     "source.organizeImports": true
   },
   "file_scan_exclusions": ["**/.expo/**", "**/.turbo/**", "**/.wrangler/**", "**/ios/Pods/**"],
   "languages": {
     "JavaScript": {
-      "format_on_save": "on",
-      "formatter": {
-        "external": {
-          "command": "pnpm",
-          "arguments": ["exec", "oxfmt", "--stdin-filepath", "{buffer_path}"]
-        }
-      }
-    },
-    "JSX": {
       "format_on_save": "on",
       "formatter": {
         "external": {

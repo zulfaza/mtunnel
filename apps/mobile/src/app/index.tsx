@@ -1,5 +1,6 @@
 import * as Device from "expo-device";
-import { Platform, StyleSheet } from "react-native";
+import { useState } from "react";
+import { Button, Platform, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnimatedIcon } from "@/components/animated-icon";
@@ -8,6 +9,7 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { WebBadge } from "@/components/web-badge";
 import { BottomTabInset, MaxContentWidth, Spacing } from "@/constants/theme";
+import { sendDevelopmentNotification } from "@/notifications";
 
 function getDevMenuHint() {
   if (Platform.OS === "web") {
@@ -29,6 +31,18 @@ function getDevMenuHint() {
 }
 
 export default function HomeScreen() {
+  const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
+
+  async function sendTestNotification() {
+    setNotificationStatus("Sending notification…");
+    try {
+      await sendDevelopmentNotification();
+      setNotificationStatus("Test notification sent");
+    } catch (error) {
+      setNotificationStatus(error instanceof Error ? error.message : "Notification failed");
+    }
+  }
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -42,6 +56,15 @@ export default function HomeScreen() {
         <ThemedText type="code" style={styles.code}>
           get started
         </ThemedText>
+
+        {__DEV__ && Platform.OS !== "web" && (
+          <ThemedView type="backgroundElement" style={styles.notificationTest}>
+            <Button title="Send test notification" onPress={sendTestNotification} />
+            {notificationStatus !== null && (
+              <ThemedText type="small">{notificationStatus}</ThemedText>
+            )}
+          </ThemedView>
+        )}
 
         <ThemedView type="backgroundElement" style={styles.stepContainer}>
           <HintRow
@@ -87,6 +110,13 @@ const styles = StyleSheet.create({
   },
   code: {
     textTransform: "uppercase",
+  },
+  notificationTest: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Spacing.four,
   },
   stepContainer: {
     gap: Spacing.three,

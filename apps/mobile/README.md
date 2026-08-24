@@ -25,6 +25,32 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Push notifications
+
+Push notifications use native APNs and FCM device tokens and do not require EAS. Push notifications require a native development or production build.
+
+For iOS, create an APNs signing key in the Apple Developer portal and configure `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`, and `APNS_BUNDLE_ID` in the API. Development builds use the APNs sandbox automatically.
+
+For Android, configure Firebase in the native app and set `FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL`, and `FCM_PRIVATE_KEY` from a Firebase service account in the API.
+
+After login, pass the WorkOS access token to `registerDeviceForPushNotifications(accessToken)`. Call `unregisterDeviceFromPushNotifications(accessToken)` before discarding the access token during logout.
+
+Set `EXPO_PUBLIC_API_URL` when the app should use an API other than `https://api.makarima.xyz`.
+
+The API's `POST /api/v1/notifications` endpoint is server-to-server and requires `NOTIFICATION_API_KEY`:
+
+```bash
+curl https://api.makarima.xyz/api/v1/notifications \
+  --header "Authorization: Bearer $NOTIFICATION_API_KEY" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "deviceId": "DEVICE_ID_RETURNED_DURING_REGISTRATION",
+    "title": "Tunnel connected",
+    "body": "Your tunnel is ready.",
+    "data": { "tunnelId": "example" }
+  }'
+```
+
 ## Get a fresh project
 
 When you're ready, run:

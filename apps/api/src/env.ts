@@ -15,6 +15,14 @@ export interface Env {
   readonly DEV_AUTH_SECRET?: string;
   readonly WORKOS_CLIENT_ID: string;
   readonly WORKOS_API_KEY?: string;
+  readonly NOTIFICATION_API_KEY?: string;
+  readonly APNS_KEY_ID?: string;
+  readonly APNS_TEAM_ID?: string;
+  readonly APNS_PRIVATE_KEY?: string;
+  readonly APNS_BUNDLE_ID?: string;
+  readonly FCM_PROJECT_ID?: string;
+  readonly FCM_CLIENT_EMAIL?: string;
+  readonly FCM_PRIVATE_KEY?: string;
   readonly CLOUDFLARE_API_TOKEN?: string;
   readonly CLOUDFLARE_ZONE_ID?: string;
   readonly TUNNEL_DOMAIN: string;

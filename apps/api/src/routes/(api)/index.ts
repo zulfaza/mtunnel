@@ -22,6 +22,12 @@ import {
   handleOrganizationRename,
   organizationRoute,
 } from "./organizations.js";
+import {
+  handleNotificationDeviceDelete,
+  handleNotificationDeviceRegister,
+  handleNotificationSend,
+  notificationDeviceId,
+} from "./notifications.js";
 import { handleTunnelStatus } from "./tunnels.js";
 import {
   handlePreviewCreate,
@@ -47,6 +53,13 @@ export async function handleApi(
     return proxyWorkosAuth(request, env, "refresh");
   if (request.method === "POST" && url.pathname === "/api/v1/auth/token")
     return handleToken(request, env);
+  if (request.method === "POST" && url.pathname === "/api/v1/notifications")
+    return handleNotificationSend(request, env);
+  const requestedNotificationDeviceId = notificationDeviceId(url.pathname);
+  if (request.method === "PUT" && requestedNotificationDeviceId !== null)
+    return handleNotificationDeviceRegister(request, env, requestedNotificationDeviceId);
+  if (request.method === "DELETE" && requestedNotificationDeviceId !== null)
+    return handleNotificationDeviceDelete(request, env, requestedNotificationDeviceId);
   if (request.method === "POST" && url.pathname === "/api/v1/domains")
     return handleDomainAdd(request, env);
   if (request.method === "POST" && url.pathname === "/api/v1/previews")
