@@ -6,6 +6,7 @@ export { ACCESS_CODE_MINIMUM_LENGTH };
 export const ACCESS_CODE_MAXIMUM_LENGTH = 128;
 export const DOCUMENT_ACCESS_GRANT_TTL_MS = 24 * 60 * 60 * 1000;
 export const PREVIEW_ACCESS_SESSION_COOKIE = "preview_access_session";
+export const PREVIEW_OWNER_TICKET_TTL_MS = 5 * 60 * 1000;
 
 const encoder = new TextEncoder();
 const hmacKeys = new Map<string, Promise<CryptoKey>>();
@@ -24,6 +25,24 @@ export function isAccessCode(value: unknown): value is string {
 
 function hex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function base64Url(value: string): string {
+  const bytes = encoder.encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
+}
+
+function decodeBase64Url(value: string): string | null {
+  try {
+    const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
+    const binary = atob(normalized + "=".repeat((4 - (normalized.length % 4)) % 4));
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return null;
+  }
 }
 
 function hmacKey(secret: string): Promise<CryptoKey> {
@@ -47,6 +66,57 @@ async function hmacHex(secret: string, bytes: Uint8Array): Promise<string> {
 
 export async function accessCodeFingerprint(code: string, secret: string): Promise<string> {
   return hmacHex(secret, encoder.encode(`preview-access-code:${code}`));
+}
+
+interface PreviewOwnerTicketPayload {
+  readonly previewId: string;
+  readonly userId: string;
+  readonly expiresAt: number;
+}
+
+export async function previewOwnerTicket(
+  secret: string,
+  payload: PreviewOwnerTicketPayload,
+): Promise<string> {
+  const encoded = base64Url(JSON.stringify(payload));
+  const signature = await hmacHex(secret, encoder.encode(`preview-owner-ticket:${encoded}`));
+  return `${encoded}.${signature}`;
+}
+
+export async function verifyPreviewOwnerTicket(
+  secret: string,
+  ticket: string,
+  previewId: string,
+  now = Date.now(),
+): Promise<PreviewOwnerTicketPayload | null> {
+  const parts = ticket.split(".");
+  const encoded = parts[0];
+  const signature = parts[1];
+  if (parts.length !== 2 || encoded === undefined || signature === undefined) return null;
+  const expected = await hmacHex(secret, encoder.encode(`preview-owner-ticket:${encoded}`));
+  if (!timingSafeSecretEqual(expected, signature)) return null;
+  const decoded = decodeBase64Url(encoded);
+  if (decoded === null) return null;
+  try {
+    const payload: unknown = JSON.parse(decoded);
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      !("previewId" in payload) ||
+      payload.previewId !== previewId ||
+      !("userId" in payload) ||
+      typeof payload.userId !== "string" ||
+      payload.userId.length === 0 ||
+      !("expiresAt" in payload) ||
+      typeof payload.expiresAt !== "number" ||
+      !Number.isSafeInteger(payload.expiresAt) ||
+      payload.expiresAt <= now
+    )
+      return null;
+    return { previewId, userId: payload.userId, expiresAt: payload.expiresAt };
+  } catch {
+    return null;
+  }
 }
 
 export function accessSessionToken(): string {
