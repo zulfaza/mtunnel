@@ -1,0 +1,13 @@
+{
+  "extends": ["expo/tsconfig.base", "@tunnel/tsconfig/base.json"],
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "lib": ["DOM", "ESNext"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/assets/*": ["./assets/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
+}

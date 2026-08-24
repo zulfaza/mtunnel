@@ -11,6 +11,7 @@
     { "path": "apps/api" },
     { "path": "apps/landing" },
     { "path": "apps/dashboard" },
-    { "path": "apps/assets-generator" }
+    { "path": "apps/assets-generator" },
+    { "path": "apps/mobile" }
   ]
 }

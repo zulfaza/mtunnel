@@ -13,6 +13,7 @@
     "dev:api": "vp run --filter @tunnel/api dev",
     "dev:landing": "vp run --filter @tunnel/landing dev",
     "dev:dashboard": "vp run --filter @tunnel/dashboard dev",
+    "dev:mobile": "vp run --filter @tunnel/mobile dev",
     "test:api": "vp run --filter @tunnel/api test",
     "test:landing": "vp run --filter @tunnel/landing test",
     "test:dashboard": "vp run --filter @tunnel/dashboard test",

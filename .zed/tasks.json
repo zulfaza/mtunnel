@@ -1,0 +1,57 @@
+[
+  {
+    "label": "dev: all workspaces",
+    "command": "pnpm",
+    "args": ["dev"],
+    "use_new_terminal": true,
+    "allow_concurrent_runs": true
+  },
+  {
+    "label": "dev: mobile",
+    "command": "pnpm",
+    "args": ["dev:mobile"],
+    "use_new_terminal": true,
+    "allow_concurrent_runs": true
+  },
+  {
+    "label": "dev: api",
+    "command": "pnpm",
+    "args": ["dev:api"],
+    "use_new_terminal": true,
+    "allow_concurrent_runs": true
+  },
+  {
+    "label": "dev: dashboard",
+    "command": "pnpm",
+    "args": ["dev:dashboard"],
+    "use_new_terminal": true,
+    "allow_concurrent_runs": true
+  },
+  {
+    "label": "dev: landing",
+    "command": "pnpm",
+    "args": ["dev:landing"],
+    "use_new_terminal": true,
+    "allow_concurrent_runs": true
+  },
+  {
+    "label": "typecheck",
+    "command": "pnpm",
+    "args": ["typecheck"]
+  },
+  {
+    "label": "lint",
+    "command": "pnpm",
+    "args": ["lint"]
+  },
+  {
+    "label": "format: write",
+    "command": "pnpm",
+    "args": ["format:write"]
+  },
+  {
+    "label": "test: e2e",
+    "command": "pnpm",
+    "args": ["test:e2e"]
+  }
+]
