@@ -8,6 +8,7 @@ import {
   accessSessionToken,
   cookieValue,
   verifyAccessCode,
+  verifyPreviewOwnerTicket,
 } from "../../preview-access.js";
 import { errorPage, previewCodePage } from "../(web)/pages.js";
 import { siteNotFound } from "../(web)/site.js";
@@ -39,6 +40,7 @@ function requestedRange(value: string | null): R2Range | undefined {
 
 interface PreviewAccessRow {
   readonly organization_id: string;
+  readonly user_id: string;
   readonly name: string;
   readonly expires_at: number;
   readonly visibility: string;
@@ -122,6 +124,19 @@ function accessRedirect(location: string, sessionToken?: string): Response {
   return new Response(null, { status: 303, headers: outputHeaders });
 }
 
+async function grantDocumentAccess(
+  env: Env,
+  documentId: string,
+  sessionHash: string,
+  now: number,
+): Promise<void> {
+  await env.DOMAINS.prepare(
+    "INSERT INTO preview_access_grants (session_hash, document_id, created_at, expires_at) VALUES (?, ?, ?, ?) ON CONFLICT (session_hash, document_id) DO UPDATE SET created_at = excluded.created_at, expires_at = excluded.expires_at",
+  )
+    .bind(sessionHash, documentId, now, now + DOCUMENT_ACCESS_GRANT_TTL_MS)
+    .run();
+}
+
 async function handleCodeSubmission(
   request: Request,
   env: Env,
@@ -153,13 +168,8 @@ async function handleCodeSubmission(
     return submittedCode === undefined
       ? previewCodePage(true)
       : accessRedirect(`${url.origin}${url.pathname}?access=invalid`);
-  const expiresAt = now + DOCUMENT_ACCESS_GRANT_TTL_MS;
   try {
-    await env.DOMAINS.prepare(
-      "INSERT INTO preview_access_grants (session_hash, document_id, created_at, expires_at) VALUES (?, ?, ?, ?) ON CONFLICT (session_hash, document_id) DO UPDATE SET created_at = excluded.created_at, expires_at = excluded.expires_at",
-    )
-      .bind(session.hash, documentId, now, expiresAt)
-      .run();
+    await grantDocumentAccess(env, documentId, session.hash, now);
   } catch (error: unknown) {
     await env.DOMAINS.prepare(
       "UPDATE preview_access_codes SET used_at = NULL, used_by_session_hash = NULL WHERE id = ? AND used_by_session_hash = ? AND used_at = ?",
@@ -168,6 +178,25 @@ async function handleCodeSubmission(
       .run();
     throw error;
   }
+  return accessRedirect(`${url.origin}${url.pathname}`, session.token);
+}
+
+async function handleOwnerTicket(
+  request: Request,
+  env: Env,
+  preview: PreviewAccessRow,
+  id: string,
+  documentId: string,
+  url: URL,
+): Promise<Response> {
+  const ticket = url.searchParams.get("owner_ticket");
+  if (ticket === null || env.AUTH_SECRET === undefined)
+    return accessRedirect(`${url.origin}${url.pathname}?owner=denied`);
+  const payload = await verifyPreviewOwnerTicket(env.AUTH_SECRET, ticket, id);
+  if (payload === null || payload.userId !== preview.user_id)
+    return accessRedirect(`${url.origin}${url.pathname}?owner=denied`);
+  const session = await sessionCredential(request, env.AUTH_SECRET);
+  await grantDocumentAccess(env, documentId, session.hash, Date.now());
   return accessRedirect(`${url.origin}${url.pathname}`, session.token);
 }
 
@@ -196,7 +225,7 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
   if (match?.[1] === undefined) return siteNotFound();
   const id = match[1];
   const preview = await env.DOMAINS.prepare(
-    "SELECT organization_id, name, expires_at, visibility, document_id, manifest FROM previews WHERE id = ?",
+    "SELECT organization_id, user_id, name, expires_at, visibility, document_id, manifest FROM previews WHERE id = ?",
   )
     .bind(id)
     .first<PreviewAccessRow>();
@@ -207,6 +236,8 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
   if (preview.visibility === "code") {
     cacheControl = "private, no-store";
     const documentId = preview.document_id ?? id;
+    if (url.searchParams.has("owner_ticket"))
+      return handleOwnerTicket(request, env, preview, id, documentId, url);
     const allowed = await hasDocumentAccess(request, env, documentId);
     if (allowed) {
       if (request.method === "POST") return siteNotFound();
@@ -217,6 +248,11 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
       const submittedCode = request.method === "GET" ? url.searchParams.get("code") : null;
       if (submittedCode !== null)
         return handleCodeSubmission(request, env, id, documentId, url, submittedCode);
+      if (request.method === "GET" && !url.searchParams.has("owner")) {
+        const authorize = new URL(`https://app.${env.TUNNEL_DOMAIN}/preview-owner-access`);
+        authorize.searchParams.set("return", `${url.origin}${url.pathname}`);
+        return accessRedirect(authorize.toString());
+      }
       return previewCodePage(url.searchParams.get("access") === "invalid");
     }
   } else if (request.method === "POST") return siteNotFound();

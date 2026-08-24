@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
+import { PreviewAccess } from "@tunnel/core";
 import { cleanupExpiredPreviews } from "../src/routes/(api)/previews.js";
 
 interface CreatedPreview {
@@ -218,7 +219,16 @@ describe("previews", () => {
       headers: { authorization: "Bearer development-token", "content-length": "5" },
       body: "hello",
     });
-    const gated = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`);
+    const ownerCheck = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`, {
+      redirect: "manual",
+    });
+    expect(ownerCheck.status).toBe(303);
+    expect(ownerCheck.headers.get("location")).toBe(
+      `https://app.worker.test/preview-owner-access?return=http%3A%2F%2Fpreview.worker.test%2F${preview.id}%2Findex.html`,
+    );
+    const gated = await SELF.fetch(
+      `http://preview.worker.test/${preview.id}/index.html?owner=denied`,
+    );
     expect(gated.status).toBe(401);
     expect(await gated.text()).toContain("Access code required");
     const unlocked = await SELF.fetch(
@@ -268,8 +278,77 @@ describe("previews", () => {
       .run();
     const expired = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`, {
       headers: { cookie: cookie?.split(";")[0] ?? "" },
+      redirect: "manual",
     });
-    expect(expired.status).toBe(401);
+    expect(expired.status).toBe(303);
+  });
+
+  it("allows the preview owner without consuming an access code", async () => {
+    const created = await SELF.fetch("http://worker.test/api/v1/previews", {
+      method: "POST",
+      headers: { authorization: "Bearer development-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "owner-gated",
+        visibility: "code",
+        accessCode: "open-sesame!",
+        files: [
+          {
+            path: "index.html",
+            size: 5,
+            contentType: "text/html",
+            sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+          },
+        ],
+      }),
+    });
+    const preview = (await created.json()) as { id: string };
+    await SELF.fetch(`http://worker.test/api/v1/previews/${preview.id}/files/index.html`, {
+      method: "PUT",
+      headers: { authorization: "Bearer development-token", "content-length": "5" },
+      body: "hello",
+    });
+    if (env.AUTH_SECRET === undefined) throw new Error("AUTH_SECRET is not configured");
+    const nonOwnerTicket = await PreviewAccess.previewOwnerTicket(env.AUTH_SECRET, {
+      previewId: preview.id,
+      userId: "another-user",
+      expiresAt: Date.now() + PreviewAccess.PREVIEW_OWNER_TICKET_TTL_MS,
+    });
+    const rejected = await SELF.fetch(
+      `http://preview.worker.test/${preview.id}/index.html?owner_ticket=${encodeURIComponent(nonOwnerTicket)}`,
+      { redirect: "manual" },
+    );
+    expect(rejected.status).toBe(303);
+    expect(rejected.headers.get("location")).toBe(
+      `http://preview.worker.test/${preview.id}/index.html?owner=denied`,
+    );
+    expect(rejected.headers.get("set-cookie")).toBeNull();
+
+    const ownerTicket = await PreviewAccess.previewOwnerTicket(env.AUTH_SECRET, {
+      previewId: preview.id,
+      userId: "development-user",
+      expiresAt: Date.now() + PreviewAccess.PREVIEW_OWNER_TICKET_TTL_MS,
+    });
+    const authorized = await SELF.fetch(
+      `http://preview.worker.test/${preview.id}/index.html?owner_ticket=${encodeURIComponent(ownerTicket)}`,
+      { redirect: "manual" },
+    );
+    expect(authorized.status).toBe(303);
+    expect(authorized.headers.get("location")).toBe(
+      `http://preview.worker.test/${preview.id}/index.html`,
+    );
+    const cookie = authorized.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const served = await SELF.fetch(`http://preview.worker.test/${preview.id}/index.html`, {
+      headers: { cookie },
+    });
+    expect(served.status).toBe(200);
+    expect(await served.text()).toBe("hello");
+
+    const accessCode = await env.DOMAINS.prepare(
+      "SELECT used_at FROM preview_access_codes WHERE document_id = ?",
+    )
+      .bind(preview.id)
+      .first<{ used_at: number | null }>();
+    expect(accessCode?.used_at).toBeNull();
   });
 
   it("shares a document grant across preview versions", async () => {
