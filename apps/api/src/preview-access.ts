@@ -14,4 +14,5 @@ export const isPreviewVisibility = PreviewAccess.isPreviewVisibility;
 export const previewAccessCookieName = PreviewAccess.previewAccessCookieName;
 export const previewAccessCookieValue = PreviewAccess.previewAccessCookieValue;
 export const verifyAccessCode = PreviewAccess.verifyAccessCode;
+export const verifyPreviewOwnerTicket = PreviewAccess.verifyPreviewOwnerTicket;
 export type PreviewVisibility = Schemas.PreviewVisibility;

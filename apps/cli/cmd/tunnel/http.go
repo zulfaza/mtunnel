@@ -69,8 +69,10 @@ func newHTTPCmd(o *rootOptions) *cobra.Command {
 		if usedProjectConfig {
 			usageSource = "project_config"
 		}
-		err = agent.Run(ctx, agent.Options{Server: cfg.Server, Secret: accessToken, RefreshToken: cfg.RefreshToken, OnCredentials: func(credentials auth.Credentials) error {
-			return config.Save(o.config, config.Config{Server: cfg.Server, AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken, OrganizationID: cfg.OrganizationID})
+		err = agent.Run(ctx, agent.Options{Server: cfg.Server, Secret: accessToken, RefreshToken: cfg.RefreshToken, LatestRefreshToken: func() string {
+			return config.LatestRefreshToken(o.config, cfg.RefreshToken)
+		}, OnCredentials: func(credentials auth.Credentials) error {
+			return config.SaveCredentials(o.config, *cfg, credentials.AccessToken, credentials.RefreshToken)
 		}, TunnelID: name, OrganizationID: cfg.OrganizationID, Hostname: hostname, Port: port, RequestTimeout: o.requestTimeout, IdleTimeout: o.idleTimeout, AllowCors: o.allowCors, Logger: o.logger, UsageSource: usageSource, OnConnected: func(ack protocol.HelloAck, reconnected bool) {
 			if first && !reconnected {
 				fmt.Fprintf(cmd.OutOrStdout(), "Tunnel connected\n\nPublic URL:\n%s\n\nForwarding:\nhttp://%s:%d\n", ack.PublicURL, hostname, port)

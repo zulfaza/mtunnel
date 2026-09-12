@@ -90,8 +90,11 @@ codes itself and uses signed HttpOnly `mt_session` cookies; it no longer needs
 API CORS or the removed `/api/v1/auth/client` and `/api/v1/auth/code` routes.
 
 Production and staging WorkOS resources are separate; staging configuration is
-not copied when production is enabled. `AUTH_SECRET` signs only short-lived
-internal agent tokens; users never receive it.
+not copied when production is enabled. `AUTH_SECRET` signs short-lived internal
+agent tokens, preview access-code hashes and preview owner tickets; users never
+receive it. The dashboard's `AUTH_SECRET` must be byte-identical to the API's,
+otherwise the preview host rejects the owner tickets the dashboard mints and
+signed-in owners keep seeing the access code gate.
 
 ## DNS and routes
 

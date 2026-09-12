@@ -1,4 +1,4 @@
-import { Check, Copy, KeyRound, Trash2, UserRoundX } from "lucide-react";
+import { Check, Copy, KeyRound, Link, Trash2, UserRoundX } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Schemas } from "@tunnel/core";
 import { generateAccessCode } from "../lib/access-code.js";
@@ -41,7 +41,7 @@ export function PreviewAccessDialog({
 }): ReactNode {
   const [access, setAccess] = useState<Schemas.PreviewAccessView | null>(null);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"code" | "link" | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleteCodeState, setDeleteCodeState] = useState<DeleteCodeState>({ status: "idle" });
   const [revokeSessionState, setRevokeSessionState] = useState<RevokeSessionState>({
@@ -51,7 +51,7 @@ export function PreviewAccessDialog({
   useEffect(() => {
     setAccess(null);
     setGeneratedCode(null);
-    setCopied(false);
+    setCopied(null);
     setDeleteCodeState({ status: "idle" });
     setRevokeSessionState({ status: "idle" });
     if (preview === null) return;
@@ -115,11 +115,15 @@ export function PreviewAccessDialog({
       });
   };
 
-  const copyCode = (): void => {
-    if (generatedCode === null) return;
-    void navigator.clipboard.writeText(generatedCode).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+  const copy = (target: "code" | "link"): void => {
+    if (preview === null || generatedCode === null) return;
+    const value =
+      target === "code"
+        ? generatedCode
+        : `${preview.url}?code=${encodeURIComponent(generatedCode)}`;
+    void navigator.clipboard.writeText(value).then(() => {
+      setCopied(target);
+      setTimeout(() => setCopied(null), 1500);
     });
   };
 
@@ -129,13 +133,15 @@ export function PreviewAccessDialog({
         <DialogHeader>
           <DialogTitle>Preview access</DialogTitle>
           <DialogDescription>
-            Generate single-use codes and manage sessions for every version of “{preview?.name}”.
+            Generate access codes and manage sessions for every version of “{preview?.name}”.
           </DialogDescription>
         </DialogHeader>
         <div className="flex items-center justify-between border border-border-soft bg-muted p-3">
           <div>
-            <p className="text-xs font-medium">One-time code</p>
-            <p className="text-xs text-muted-foreground">Replaces any unused code.</p>
+            <p className="text-xs font-medium">Access code</p>
+            <p className="text-xs text-muted-foreground">
+              Reusable until replaced. Generating revokes the current code.
+            </p>
           </div>
           <Button disabled={busy} onClick={generate} type="button" variant="primary">
             <KeyRound /> {busy ? "Working…" : "Generate code"}
@@ -149,21 +155,30 @@ export function PreviewAccessDialog({
                 {generatedCode}
               </code>
               <Button
-                aria-label={copied ? "Copied" : "Copy code"}
-                className={copied ? "border-accent-text text-accent-text" : undefined}
-                onClick={copyCode}
+                aria-label={copied === "code" ? "Copied" : "Copy code"}
+                className={copied === "code" ? "border-accent-text text-accent-text" : undefined}
+                onClick={() => copy("code")}
                 size="icon"
-                title={copied ? "Copied" : "Copy code"}
+                title={copied === "code" ? "Copied" : "Copy code"}
               >
-                {copied ? <Check className="animate-copy-feedback" /> : <Copy />}
+                {copied === "code" ? <Check className="animate-copy-feedback" /> : <Copy />}
+              </Button>
+              <Button
+                aria-label={copied === "link" ? "Copied" : "Copy link"}
+                className={copied === "link" ? "border-accent-text text-accent-text" : undefined}
+                onClick={() => copy("link")}
+                size="icon"
+                title={copied === "link" ? "Copied" : "Copy link with code"}
+              >
+                {copied === "link" ? <Check className="animate-copy-feedback" /> : <Link />}
               </Button>
             </div>
           </div>
         )}
         <AccessList
           busy={busy}
-          empty="No unused codes."
-          heading="Unused codes"
+          empty="No active codes."
+          heading="Active codes"
           items={access?.codes ?? null}
           onRemove={(id) => setDeleteCodeState({ status: "confirming", id })}
           removeIcon={<Trash2 />}
@@ -243,7 +258,7 @@ function DeleteCodeDialog({
         <DialogHeader>
           <DialogTitle>Delete access code?</DialogTitle>
           <DialogDescription>
-            This unused code will stop granting preview access. This action cannot be undone.
+            This code will stop granting preview access. This action cannot be undone.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

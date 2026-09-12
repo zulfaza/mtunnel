@@ -62,7 +62,8 @@ The dashboard is a TanStack Start Worker. Configure bindings in
 `apps/dashboard/wrangler.jsonc`; cross-script Durable Object bindings need
 `mtunnel-api` deployed in the same Cloudflare account. For local auth, set
 `WORKOS_API_KEY` and a random `SESSION_SECRET` (at least 32 bytes) in the
-dashboard `.dev.vars`. Run the API as the auxiliary Worker when testing D1,
+dashboard `.dev.vars`, plus the API's `AUTH_SECRET` so preview owner tickets
+verify on the preview host. Run the API as the auxiliary Worker when testing D1,
 R2, or Durable Object behavior; do not point dashboard code at API HTTP routes.
 
 Dashboard server-only code lives under `apps/dashboard/src/server` and calls

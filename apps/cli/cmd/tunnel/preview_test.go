@@ -124,7 +124,7 @@ func TestPreviewCreateSendsVisibilityAndAccessCode(t *testing.T) {
 	if createBody["visibility"] != "code" || createBody["accessCode"] != "letmein-secure" {
 		t.Fatalf("unexpected create body: %#v", createBody)
 	}
-	if !strings.Contains(output.String(), "https://preview.makarima.xyz/pv1/index.html") {
+	if strings.TrimSpace(output.String()) != "https://preview.makarima.xyz/pv1/index.html?code=letmein-secure" {
 		t.Fatalf("unexpected output: %q", output.String())
 	}
 }

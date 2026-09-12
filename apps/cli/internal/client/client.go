@@ -21,6 +21,7 @@ import (
 
 var ErrReplaced = errors.New("tunnel connection replaced by another agent")
 var ErrLimitReached = errors.New("tunnel usage limit reached")
+var ErrSessionExpired = errors.New("session expired; run `mt login`")
 
 type SendFunc func(protocol.Message) error
 type OpenFunc func(context.Context, protocol.HelloAck, SendFunc) func()
@@ -43,21 +44,22 @@ type textOutbound struct {
 func (textOutbound) outboundMessage() {}
 
 type Options struct {
-	Server          string
-	Secret          string
-	RefreshToken    string
-	OnCredentials   func(auth.Credentials) error
-	TunnelID        string
-	OrganizationID  string
-	AgentVersion    string
-	UsageSource     string
-	OperatingSystem string
-	AllowCors       bool
-	HTTPClient      *http.Client
-	Logger          *slog.Logger
-	InitialBackoff  time.Duration
-	OnOpen          OpenFunc
-	OnMessage       MessageFunc
+	Server             string
+	Secret             string
+	RefreshToken       string
+	LatestRefreshToken func() string
+	OnCredentials      func(auth.Credentials) error
+	TunnelID           string
+	OrganizationID     string
+	AgentVersion       string
+	UsageSource        string
+	OperatingSystem    string
+	AllowCors          bool
+	HTTPClient         *http.Client
+	Logger             *slog.Logger
+	InitialBackoff     time.Duration
+	OnOpen             OpenFunc
+	OnMessage          MessageFunc
 }
 
 func Run(ctx context.Context, opts Options) error {
@@ -78,17 +80,29 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		ack, err := runOnce(ctx, opts)
 		if auth.IsUnauthorized(err) && opts.RefreshToken != "" {
-			credentials, refreshErr := auth.Refresh(ctx, opts.HTTPClient, opts.Server, opts.RefreshToken)
-			if refreshErr != nil {
-				return refreshErr
-			}
-			opts.Secret, opts.RefreshToken = credentials.AccessToken, credentials.RefreshToken
-			if opts.OnCredentials != nil {
-				if saveErr := opts.OnCredentials(credentials); saveErr != nil {
-					return saveErr
+			if opts.LatestRefreshToken != nil {
+				if latest := opts.LatestRefreshToken(); latest != "" {
+					opts.RefreshToken = latest
 				}
 			}
-			ack, err = runOnce(ctx, opts)
+			credentials, refreshErr := auth.Refresh(ctx, opts.HTTPClient, opts.Server, opts.RefreshToken)
+			switch {
+			case refreshErr == nil:
+				opts.Secret, opts.RefreshToken = credentials.AccessToken, credentials.RefreshToken
+				if opts.OnCredentials != nil {
+					if saveErr := opts.OnCredentials(credentials); saveErr != nil {
+						return saveErr
+					}
+				}
+				ack, err = runOnce(ctx, opts)
+			case auth.IsRefreshRejected(refreshErr):
+				return ErrSessionExpired
+			default:
+				// Rate limiting, server errors and network failures are temporary, so
+				// keep the tunnel alive and retry through the reconnect backoff.
+				opts.Logger.Warn("token refresh failed", "error", refreshErr)
+				err = refreshErr
+			}
 		}
 		if errors.Is(err, ErrReplaced) || errors.Is(err, ErrLimitReached) {
 			return err
@@ -138,11 +152,19 @@ func runOnce(parent context.Context, opts Options) (protocol.HelloAck, error) {
 	if opts.AllowCors {
 		headers.Set("X-Mtunnel-Allow-Cors", "true")
 	}
-	conn, _, err := websocket.Dial(parent, wsURL, &websocket.DialOptions{
+	conn, response, err := websocket.Dial(parent, wsURL, &websocket.DialOptions{
 		HTTPClient: opts.HTTPClient,
 		HTTPHeader: headers,
 	})
 	if err != nil {
+		if response != nil {
+			if response.Body != nil {
+				response.Body.Close()
+			}
+			if response.StatusCode == http.StatusUnauthorized {
+				return protocol.HelloAck{}, auth.StatusError("dial tunnel websocket", response.StatusCode)
+			}
+		}
 		return protocol.HelloAck{}, fmt.Errorf("dial tunnel websocket: %w", err)
 	}
 	defer conn.CloseNow()

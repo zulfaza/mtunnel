@@ -8,13 +8,18 @@ import {
   accessSessionToken,
   cookieValue,
   verifyAccessCode,
+  verifyPreviewOwnerTicket,
 } from "../../preview-access.js";
 import { errorPage, previewCodePage } from "../(web)/pages.js";
 import { siteNotFound } from "../(web)/site.js";
 
+const OWNER_PROBE_COOKIE = "preview_owner_probe";
+const OWNER_PROBE_TTL_SECONDS = 10 * 60;
+
 function headers(contentType: string | undefined, etag: string, cacheControl: string): Headers {
   const output = new Headers({
     "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
     "cache-control": cacheControl,
     etag,
   });
@@ -87,39 +92,52 @@ async function redeemAccessCode(
   submitted: string,
   sessionHash: string,
   now: number,
-): Promise<string | null> {
+): Promise<boolean> {
   const secret = env.AUTH_SECRET;
-  if (secret === undefined) return null;
+  if (secret === undefined) return false;
   const fingerprint = await accessCodeFingerprint(submitted, secret);
   const candidates = await env.DOMAINS.prepare(
-    "SELECT id, code_hash FROM preview_access_codes WHERE document_id = ? AND used_at IS NULL AND (code_fingerprint = ? OR code_fingerprint IS NULL) ORDER BY created_at DESC LIMIT 100",
+    "SELECT id, code_hash FROM preview_access_codes WHERE document_id = ? AND revoked_at IS NULL AND (code_fingerprint = ? OR code_fingerprint IS NULL) ORDER BY created_at DESC LIMIT 100",
   )
     .bind(documentId, fingerprint)
     .all<AccessCodeRow>();
   for (const candidate of candidates.results) {
     if (!(await verifyAccessCode(submitted, candidate.code_hash, secret))) continue;
-    const redeemed = await env.DOMAINS.prepare(
-      "UPDATE preview_access_codes SET used_at = ?, used_by_session_hash = ? WHERE id = ? AND used_at IS NULL",
+    await env.DOMAINS.prepare(
+      "UPDATE preview_access_codes SET used_at = ?, used_by_session_hash = ? WHERE id = ?",
     )
       .bind(now, sessionHash, candidate.id)
       .run();
-    return redeemed.meta.changes === 1 ? candidate.id : null;
+    return true;
   }
-  return null;
+  return false;
 }
 
 function accessCookie(token: string): string {
   return `${PREVIEW_ACCESS_SESSION_COOKIE}=${token}; Path=/; Max-Age=${String(Math.floor(DOCUMENT_ACCESS_GRANT_TTL_MS / 1000))}; HttpOnly; Secure; SameSite=Lax`;
 }
 
-function accessRedirect(location: string, sessionToken?: string): Response {
+function accessRedirect(location: string, cookie?: string): Response {
   const outputHeaders = new Headers({
     location,
     "cache-control": "no-store",
     "referrer-policy": "no-referrer",
   });
-  if (sessionToken !== undefined) outputHeaders.set("set-cookie", accessCookie(sessionToken));
+  if (cookie !== undefined) outputHeaders.set("set-cookie", cookie);
   return new Response(null, { status: 303, headers: outputHeaders });
+}
+
+async function grantDocumentAccess(
+  env: Env,
+  documentId: string,
+  sessionHash: string,
+  now: number,
+): Promise<void> {
+  await env.DOMAINS.prepare(
+    "INSERT INTO preview_access_grants (session_hash, document_id, created_at, expires_at) VALUES (?, ?, ?, ?) ON CONFLICT (session_hash, document_id) DO UPDATE SET created_at = excluded.created_at, expires_at = excluded.expires_at",
+  )
+    .bind(sessionHash, documentId, now, now + DOCUMENT_ACCESS_GRANT_TTL_MS)
+    .run();
 }
 
 async function handleCodeSubmission(
@@ -147,28 +165,50 @@ async function handleCodeSubmission(
   }
   const session = await sessionCredential(request, env.AUTH_SECRET);
   const now = Date.now();
-  const redeemedCodeId =
-    submitted === "" ? null : await redeemAccessCode(env, documentId, submitted, session.hash, now);
-  if (redeemedCodeId === null)
+  const redeemed =
+    submitted !== "" && (await redeemAccessCode(env, documentId, submitted, session.hash, now));
+  if (!redeemed)
     return submittedCode === undefined
       ? previewCodePage(true)
       : accessRedirect(`${url.origin}${url.pathname}?access=invalid`);
-  const expiresAt = now + DOCUMENT_ACCESS_GRANT_TTL_MS;
-  try {
-    await env.DOMAINS.prepare(
-      "INSERT INTO preview_access_grants (session_hash, document_id, created_at, expires_at) VALUES (?, ?, ?, ?) ON CONFLICT (session_hash, document_id) DO UPDATE SET created_at = excluded.created_at, expires_at = excluded.expires_at",
-    )
-      .bind(session.hash, documentId, now, expiresAt)
-      .run();
-  } catch (error: unknown) {
-    await env.DOMAINS.prepare(
-      "UPDATE preview_access_codes SET used_at = NULL, used_by_session_hash = NULL WHERE id = ? AND used_by_session_hash = ? AND used_at = ?",
-    )
-      .bind(redeemedCodeId, session.hash, now)
-      .run();
-    throw error;
-  }
-  return accessRedirect(`${url.origin}${url.pathname}`, session.token);
+  await grantDocumentAccess(env, documentId, session.hash, now);
+  return accessRedirect(`${url.origin}${url.pathname}`, accessCookie(session.token));
+}
+
+function ownerProbeCookie(previewId: string): string {
+  return `${OWNER_PROBE_COOKIE}=1; Path=/${previewId}; Max-Age=${String(OWNER_PROBE_TTL_SECONDS)}; HttpOnly; Secure; SameSite=Lax`;
+}
+
+async function handleOwnerTicket(
+  request: Request,
+  env: Env,
+  preview: PreviewAccessRow,
+  id: string,
+  documentId: string,
+  url: URL,
+): Promise<Response> {
+  const cleanUrl = `${url.origin}${url.pathname}`;
+  const ticket = url.searchParams.get("owner_ticket");
+  if (ticket === null || env.AUTH_SECRET === undefined)
+    return accessRedirect(cleanUrl, ownerProbeCookie(id));
+  const payload = await verifyPreviewOwnerTicket(env.AUTH_SECRET, ticket, id);
+  if (payload === null || payload.organizationId !== preview.organization_id)
+    return accessRedirect(cleanUrl, ownerProbeCookie(id));
+  const session = await sessionCredential(request, env.AUTH_SECRET);
+  await grantDocumentAccess(env, documentId, session.hash, Date.now());
+  return accessRedirect(cleanUrl, accessCookie(session.token));
+}
+
+// Only bounce real top-level navigations through the dashboard: bots, prefetches and
+// subresource requests must keep seeing the gate, and the probe cookie stops a visitor
+// who is signed out or not a member from being bounced on every page view.
+function shouldProbeOwner(request: Request, url: URL): boolean {
+  return (
+    request.method === "GET" &&
+    request.headers.get("sec-fetch-dest") === "document" &&
+    !url.searchParams.has("access") &&
+    cookieValue(request.headers.get("cookie"), OWNER_PROBE_COOKIE) === null
+  );
 }
 
 async function hasDocumentAccess(request: Request, env: Env, documentId: string): Promise<boolean> {
@@ -207,6 +247,8 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
   if (preview.visibility === "code") {
     cacheControl = "private, no-store";
     const documentId = preview.document_id ?? id;
+    if (request.method === "GET" && url.searchParams.has("owner_ticket"))
+      return handleOwnerTicket(request, env, preview, id, documentId, url);
     const allowed = await hasDocumentAccess(request, env, documentId);
     if (allowed) {
       if (request.method === "POST") return siteNotFound();
@@ -217,6 +259,11 @@ export async function servePreview(request: Request, env: Env, url: URL): Promis
       const submittedCode = request.method === "GET" ? url.searchParams.get("code") : null;
       if (submittedCode !== null)
         return handleCodeSubmission(request, env, id, documentId, url, submittedCode);
+      if (shouldProbeOwner(request, url)) {
+        const authorize = new URL(`https://app.${env.TUNNEL_DOMAIN}/preview-owner-access`);
+        authorize.searchParams.set("return", `${url.origin}${url.pathname}`);
+        return accessRedirect(authorize.toString(), ownerProbeCookie(id));
+      }
       return previewCodePage(url.searchParams.get("access") === "invalid");
     }
   } else if (request.method === "POST") return siteNotFound();

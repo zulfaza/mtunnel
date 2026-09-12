@@ -397,7 +397,11 @@ func newPreviewCmd(o *rootOptions) *cobra.Command {
 			if err = uploadPreview(o, result.ID, files); err != nil {
 				return fmt.Errorf("upload preview: %w", err)
 			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), result.URL)
+			shareURL := result.URL
+			if visibility == "code" && accessCode != "" {
+				shareURL += "?code=" + url.QueryEscape(accessCode)
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), shareURL)
 			return err
 		},
 	}

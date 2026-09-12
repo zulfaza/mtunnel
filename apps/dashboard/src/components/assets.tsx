@@ -2,7 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Copy, ExternalLink, KeyRound, Trash2 } from "lucide-react";
 import { Fragment, useCallback, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { Schemas } from "@tunnel/core";
-import { formatBytes, formatExpiry } from "../lib/preview-format.js";
+import { formatBytes, formatExpiry, previewHref } from "../lib/preview-format.js";
 import { groupPreviews } from "../lib/preview-groups.js";
 import { createPreview, deletePreview, updatePreview } from "../server/previews.js";
 import { PreviewAccessDialog } from "./preview-access.js";
@@ -245,7 +245,7 @@ export function AssetsPage({
                           <div className="flex justify-end">
                             <ActionMenu label={`Actions for ${preview.name}`}>
                               <ActionMenuItem asChild>
-                                <a href={preview.url} rel="noreferrer" target="_blank">
+                                <a href={previewHref(preview)} rel="noreferrer" target="_blank">
                                   <ExternalLink /> Open preview
                                 </a>
                               </ActionMenuItem>

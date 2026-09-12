@@ -17,22 +17,25 @@ import (
 )
 
 type Options struct {
-	Server         string
-	Secret         string
-	RefreshToken   string
-	OnCredentials  func(auth.Credentials) error
-	TunnelID       string
-	OrganizationID string
-	Hostname       string
-	Port           int
-	RequestTimeout time.Duration
-	IdleTimeout    time.Duration // Close the tunnel after this long without a request; 0 disables.
-	AllowCors      bool
-	Logger         *slog.Logger
-	HTTPClient     *http.Client
-	InitialBackoff time.Duration
-	OnConnected    func(protocol.HelloAck, bool)
-	UsageSource    string
+	Server       string
+	Secret       string
+	RefreshToken string
+	// LatestRefreshToken re-reads the stored refresh token before a refresh
+	// attempt because WorkOS rotates it on every use.
+	LatestRefreshToken func() string
+	OnCredentials      func(auth.Credentials) error
+	TunnelID           string
+	OrganizationID     string
+	Hostname           string
+	Port               int
+	RequestTimeout     time.Duration
+	IdleTimeout        time.Duration // Close the tunnel after this long without a request; 0 disables.
+	AllowCors          bool
+	Logger             *slog.Logger
+	HTTPClient         *http.Client
+	InitialBackoff     time.Duration
+	OnConnected        func(protocol.HelloAck, bool)
+	UsageSource        string
 }
 
 func Run(ctx context.Context, opts Options) error {
@@ -109,7 +112,7 @@ func Run(ctx context.Context, opts Options) error {
 			mu.Unlock()
 		}
 	}
-	err := client.Run(ctx, client.Options{Server: opts.Server, Secret: opts.Secret, RefreshToken: opts.RefreshToken, OnCredentials: opts.OnCredentials, TunnelID: opts.TunnelID, OrganizationID: opts.OrganizationID, AgentVersion: "dev", UsageSource: opts.UsageSource, OperatingSystem: runtime.GOOS, AllowCors: opts.AllowCors, HTTPClient: httpClient, Logger: opts.Logger, InitialBackoff: opts.InitialBackoff, OnOpen: onOpen, OnMessage: onMessage})
+	err := client.Run(ctx, client.Options{Server: opts.Server, Secret: opts.Secret, RefreshToken: opts.RefreshToken, LatestRefreshToken: opts.LatestRefreshToken, OnCredentials: opts.OnCredentials, TunnelID: opts.TunnelID, OrganizationID: opts.OrganizationID, AgentVersion: "dev", UsageSource: opts.UsageSource, OperatingSystem: runtime.GOOS, AllowCors: opts.AllowCors, HTTPClient: httpClient, Logger: opts.Logger, InitialBackoff: opts.InitialBackoff, OnOpen: onOpen, OnMessage: onMessage})
 	if err == client.ErrReplaced {
 		opts.Logger.Warn("tunnel replaced by a newer agent", "tunnelId", opts.TunnelID)
 	}

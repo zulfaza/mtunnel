@@ -1,6 +1,9 @@
+import { Effect } from "effect";
+import { Workos } from "@tunnel/core";
 import { mintAgentToken } from "../../auth/index.js";
 import { authenticateUser, authErrorResponse, workosForm } from "../../auth/workos.js";
 import type { Env } from "../../env.js";
+import { runCore } from "../../runtime.js";
 import { jsonError, jsonResponse } from "../../utils/json.js";
 import { isValidTunnelId } from "../../utils/tunnel-id.js";
 
@@ -62,18 +65,40 @@ export async function proxyWorkosAuth(
     kind === "refresh" &&
     "refreshToken" in input &&
     typeof input.refreshToken === "string" &&
-    env.WORKOS_API_KEY !== undefined
+    input.refreshToken !== ""
   ) {
-    return globalThis.fetch("https://api.workos.com/user_management/authenticate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        client_id: env.WORKOS_CLIENT_ID,
-        client_secret: env.WORKOS_API_KEY,
-        grant_type: "refresh_token",
-        refresh_token: input.refreshToken,
-      }),
-    });
+    return refreshWorkosSession(env, input.refreshToken);
   } else return jsonError(400, "bad_request");
   return workosForm("authenticate", body);
+}
+
+function rotatedSession(value: unknown): { access_token: string; refresh_token: string } | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { access_token: accessToken, refresh_token: refreshToken } = value as Record<
+    string,
+    unknown
+  >;
+  if (typeof accessToken !== "string" || accessToken === "") return null;
+  if (typeof refreshToken !== "string" || refreshToken === "") return null;
+  return { access_token: accessToken, refresh_token: refreshToken };
+}
+
+// WorkOS rotates the refresh token on every use, so the CLI depends on getting
+// the new pair back verbatim and on telling a revoked session (401) apart from a
+// server-side problem it should retry (5xx).
+async function refreshWorkosSession(env: Env, refreshToken: string): Promise<Response> {
+  if (env.WORKOS_API_KEY === undefined) return jsonError(500, "server_misconfigured");
+  const refreshed = await runCore(
+    env,
+    Effect.gen(function* () {
+      const workos = yield* Workos.Workos;
+      return yield* workos.authenticate({ kind: "refresh", refreshToken });
+    }),
+  );
+  if (refreshed.status === 400 || refreshed.status === 401) return jsonError(401, "invalid_grant");
+  const rotated = refreshed.ok
+    ? rotatedSession(await refreshed.json().catch((): null => null))
+    : null;
+  if (rotated === null) return jsonError(502, "upstream_error");
+  return jsonResponse(rotated);
 }

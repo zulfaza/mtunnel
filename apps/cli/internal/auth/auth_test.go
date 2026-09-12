@@ -84,3 +84,65 @@ func TestMintTokenUnauthorized(t *testing.T) {
 		t.Fatalf("error = %v, want unauthorized response error", err)
 	}
 }
+
+func TestWaitForDeviceLoginRequiresRefreshToken(t *testing.T) {
+	server := newServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"access"}`))
+	}))
+	defer server.Close()
+
+	_, err := WaitForDeviceLogin(context.Background(), server.Client(), server.URL, DeviceAuthorization{
+		DeviceCode: "device-code",
+		ExpiresIn:  5,
+	})
+	if err == nil || !strings.Contains(err.Error(), "did not return a refresh token") {
+		t.Fatalf("error = %v, want missing refresh token error", err)
+	}
+}
+
+func TestRefreshRejectionIsTerminal(t *testing.T) {
+	server := newServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+	}))
+	defer server.Close()
+
+	_, err := Refresh(context.Background(), server.Client(), server.URL, "stale-refresh")
+	if !IsRefreshRejected(err) {
+		t.Fatalf("error = %v, want terminal refresh rejection", err)
+	}
+}
+
+func TestRefreshRateLimitIsTransient(t *testing.T) {
+	server := newServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	_, err := Refresh(context.Background(), server.Client(), server.URL, "refresh")
+	if err == nil || IsRefreshRejected(err) {
+		t.Fatalf("error = %v, want transient refresh failure", err)
+	}
+}
+
+func TestRefreshReturnsRotatedCredentials(t *testing.T) {
+	var sent struct {
+		RefreshToken string `json:"refreshToken"`
+	}
+	server := newServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&sent)
+		_, _ = w.Write([]byte(`{"access_token":"rotated-access","refresh_token":"rotated-refresh"}`))
+	}))
+	defer server.Close()
+
+	credentials, err := Refresh(context.Background(), server.Client(), server.URL, "stored-refresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sent.RefreshToken != "stored-refresh" {
+		t.Fatalf("sent refresh token = %q", sent.RefreshToken)
+	}
+	if credentials.AccessToken != "rotated-access" || credentials.RefreshToken != "rotated-refresh" {
+		t.Fatalf("credentials = %#v", credentials)
+	}
+}

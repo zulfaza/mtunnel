@@ -42,6 +42,19 @@ func IsUnauthorized(err error) bool {
 	return errors.As(err, &response) && response.StatusCode == http.StatusUnauthorized
 }
 
+// IsRefreshRejected reports whether the server refused the refresh token itself.
+// Only those statuses mean the session is gone for good; rate limiting, server
+// errors and network failures are transient and worth retrying.
+func IsRefreshRejected(err error) bool {
+	var response *responseError
+	return errors.As(err, &response) &&
+		(response.StatusCode == http.StatusBadRequest || response.StatusCode == http.StatusUnauthorized)
+}
+
+func StatusError(operation string, statusCode int) error {
+	return &responseError{Operation: operation, StatusCode: statusCode}
+}
+
 func endpoint(server, path string) (string, error) {
 	base, err := url.Parse(server)
 	if err != nil || base.Scheme == "" || base.Host == "" {
@@ -123,6 +136,9 @@ func WaitForDeviceLogin(ctx context.Context, client *http.Client, server string,
 				return Credentials{}, fmt.Errorf("complete login: %w", requestErr)
 			}
 			if status == http.StatusOK && result.AccessToken != "" {
+				if result.RefreshToken == "" {
+					return Credentials{}, fmt.Errorf("complete login: server did not return a refresh token")
+				}
 				return result.Credentials, nil
 			}
 			switch result.Error {
@@ -153,8 +169,11 @@ func Refresh(ctx context.Context, client *http.Client, server, refreshToken stri
 	if err != nil {
 		return result, fmt.Errorf("refresh login: %w", err)
 	}
-	if status != http.StatusOK || result.AccessToken == "" || result.RefreshToken == "" {
-		return result, fmt.Errorf("refresh login: server returned status %d", status)
+	if status != http.StatusOK {
+		return result, &responseError{Operation: "refresh login", StatusCode: status}
+	}
+	if result.AccessToken == "" || result.RefreshToken == "" {
+		return result, fmt.Errorf("refresh login: response is missing tokens")
 	}
 	return result, nil
 }

@@ -316,7 +316,7 @@ export const previewsLayer = Layer.effect(
       return [
         database
           .prepare(
-            "UPDATE preview_access_codes SET used_at = ? WHERE document_id = ? AND used_at IS NULL",
+            "UPDATE preview_access_codes SET revoked_at = ? WHERE document_id = ? AND revoked_at IS NULL",
           )
           .bind(now, documentId),
         database
@@ -549,7 +549,7 @@ export const previewsLayer = Layer.effect(
       const codes = yield* Effect.promise(() =>
         database
           .prepare(
-            "SELECT id, created_at FROM preview_access_codes WHERE document_id = ? AND used_at IS NULL ORDER BY created_at DESC",
+            "SELECT id, created_at FROM preview_access_codes WHERE document_id = ? AND revoked_at IS NULL ORDER BY created_at DESC",
           )
           .bind(preview.document_id)
           .all(),

@@ -26,7 +26,7 @@ func newLoginCmd(o *rootOptions) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if err := config.Save(o.config, config.Config{Server: server, AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken}); err != nil {
+		if err := config.SaveCredentials(o.config, config.Config{Server: server}, credentials.AccessToken, credentials.RefreshToken); err != nil {
 			return err
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Signed in.")

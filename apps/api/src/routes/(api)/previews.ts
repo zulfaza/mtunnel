@@ -136,7 +136,7 @@ function accessCodeStatements(
   if (visibility.accessCodeHash === null || visibility.accessCodeFingerprint === null) return [];
   return [
     env.DOMAINS.prepare(
-      "UPDATE preview_access_codes SET used_at = ? WHERE document_id = ? AND used_at IS NULL",
+      "UPDATE preview_access_codes SET revoked_at = ? WHERE document_id = ? AND revoked_at IS NULL",
     ).bind(now, documentId),
     env.DOMAINS.prepare(
       "INSERT INTO preview_access_codes (id, document_id, code_hash, code_fingerprint, created_at) VALUES (?, ?, ?, ?, ?)",

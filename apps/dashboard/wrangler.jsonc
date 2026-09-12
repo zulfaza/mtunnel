@@ -26,6 +26,8 @@
     },
   ],
   "r2_buckets": [{ "binding": "PREVIEWS", "bucket_name": "mtunnel-previews" }],
+  // Secrets: SESSION_SECRET, WORKOS_API_KEY, AUTH_SECRET (must match the API worker's
+  // AUTH_SECRET so preview owner tickets verify)
   "vars": {
     "TUNNEL_DOMAIN": "makarima.xyz",
     "PREVIEW_DOMAIN": "preview.makarima.xyz",
