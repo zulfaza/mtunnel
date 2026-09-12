@@ -146,7 +146,7 @@ func newOrganizationCmd(o *rootOptions) *cobra.Command {
 				return err
 			}
 			cfg.OrganizationID = org.ID
-			if err := config.Save(o.config, cfg); err != nil {
+			if err := config.Save(o.config, *cfg); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Created organization %s (%s) and switched to it.\n", org.Name, org.ID)
@@ -172,7 +172,7 @@ func newOrganizationCmd(o *rootOptions) *cobra.Command {
 				return err
 			}
 			cfg.OrganizationID = matched.ID
-			if err := config.Save(o.config, cfg); err != nil {
+			if err := config.Save(o.config, *cfg); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Switched to organization %s (%s).\n", matched.Name, matched.ID)
@@ -250,7 +250,7 @@ func newOrganizationCmd(o *rootOptions) *cobra.Command {
 				return err
 			}
 			cfg.OrganizationID = result.CurrentOrganizationID
-			if err := config.Save(o.config, cfg); err != nil {
+			if err := config.Save(o.config, *cfg); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Left organization %s. Current organization: %s.\n", args[0], result.CurrentOrganizationID)

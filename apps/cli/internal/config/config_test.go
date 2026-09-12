@@ -66,3 +66,51 @@ func TestLoadProjectMissingFilePreservesNotExist(t *testing.T) {
 		t.Fatalf("LoadProject() error = %v, want fs.ErrNotExist", err)
 	}
 }
+
+func TestSaveCredentialsKeepsOtherFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	stored := Config{Server: "https://example.test", AccessToken: "old-access", RefreshToken: "old-refresh", OrganizationID: "org_1"}
+	if err := SaveCredentials(path, stored, "new-access", "new-refresh"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Config{Server: "https://example.test", AccessToken: "new-access", RefreshToken: "new-refresh", OrganizationID: "org_1"}
+	if got != want {
+		t.Fatalf("Load() = %#v, want %#v", got, want)
+	}
+}
+
+func TestLatestRefreshTokenPrefersStoredValue(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := Save(path, Config{Server: "https://example.test", RefreshToken: "rotated-refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := LatestRefreshToken(path, "captured-refresh"); got != "rotated-refresh" {
+		t.Fatalf("LatestRefreshToken() = %q, want rotated-refresh", got)
+	}
+	missing := filepath.Join(t.TempDir(), "missing.json")
+	if got := LatestRefreshToken(missing, "captured-refresh"); got != "captured-refresh" {
+		t.Fatalf("LatestRefreshToken() = %q, want the captured fallback", got)
+	}
+}
+
+func TestSaveLeavesNoTemporaryFiles(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "config.json")
+	if err := Save(path, Config{Server: "https://example.test"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(path, Config{Server: "https://example.test", AccessToken: "second"}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "config.json" {
+		t.Fatalf("directory entries = %v, want only config.json", entries)
+	}
+}

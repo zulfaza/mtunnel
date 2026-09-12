@@ -2,7 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ExternalLink, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { Schemas } from "@tunnel/core";
-import { formatBytes, formatExpiry, formatUploadTime } from "../lib/preview-format.js";
+import { formatBytes, formatExpiry, formatUploadTime, previewHref } from "../lib/preview-format.js";
 import { deletePreview } from "../server/previews.js";
 import { SectionHeading, Shell } from "./shell.js";
 import { ActionMenu, ActionMenuItem } from "./ui/action-menu.js";
@@ -108,7 +108,7 @@ export function PreviewDetailPage({
             </p>
           </div>
           <Button asChild variant="primary">
-            <a href={latest.url} rel="noreferrer" target="_blank">
+            <a href={previewHref(latest)} rel="noreferrer" target="_blank">
               open latest <ExternalLink />
             </a>
           </Button>
@@ -166,7 +166,7 @@ export function PreviewDetailPage({
                     <div className="flex justify-end">
                       <ActionMenu label={`Actions for version ${preview.version}`}>
                         <ActionMenuItem asChild>
-                          <a href={preview.url} rel="noreferrer" target="_blank">
+                          <a href={previewHref(preview)} rel="noreferrer" target="_blank">
                             <ExternalLink /> Open version
                           </a>
                         </ActionMenuItem>

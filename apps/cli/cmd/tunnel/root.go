@@ -157,11 +157,11 @@ func isTerminal(f *os.File) bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-func (o *rootOptions) loadConfig() (config.Config, error) {
+func (o *rootOptions) loadConfig() (*config.Config, error) {
 	cfg, err := config.Load(o.config)
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
-			return config.Config{}, err
+			return nil, err
 		}
 		cfg = config.Config{}
 	}
@@ -176,14 +176,15 @@ func (o *rootOptions) loadConfig() (config.Config, error) {
 		cfg.RefreshToken = ""
 	}
 	if cfg.Server == "" {
-		return config.Config{}, fmt.Errorf("server URL is required; run mt login or pass --server")
+		return nil, fmt.Errorf("server URL is required; run mt login or pass --server")
 	}
-	return cfg, nil
+	return &cfg, nil
 }
 
 // doAuthenticated retries once with rotated credentials when a stored access
 // token expires. The request factory makes retries safe for requests with bodies.
-func (o *rootOptions) doAuthenticated(ctx context.Context, cfg config.Config, newRequest func(string) (*http.Request, error)) (*http.Response, error) {
+// It updates cfg in place so the caller keeps using the rotated tokens.
+func (o *rootOptions) doAuthenticated(ctx context.Context, cfg *config.Config, newRequest func(string) (*http.Request, error)) (*http.Response, error) {
 	accessToken := cfg.AccessToken
 	if accessToken == "" {
 		accessToken = cfg.Secret
@@ -207,13 +208,17 @@ func (o *rootOptions) doAuthenticated(ctx context.Context, cfg config.Config, ne
 	}
 	io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	resp.Body.Close()
-	credentials, err := auth.Refresh(ctx, http.DefaultClient, cfg.Server, cfg.RefreshToken)
+	credentials, err := auth.Refresh(ctx, http.DefaultClient, cfg.Server, config.LatestRefreshToken(o.config, cfg.RefreshToken))
 	if err != nil {
+		if auth.IsRefreshRejected(err) {
+			return nil, fmt.Errorf("session expired; run mt login")
+		}
 		return nil, err
 	}
-	if err := config.Save(o.config, config.Config{Server: cfg.Server, AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken, OrganizationID: cfg.OrganizationID}); err != nil {
+	if err := config.SaveCredentials(o.config, *cfg, credentials.AccessToken, credentials.RefreshToken); err != nil {
 		return nil, err
 	}
+	cfg.AccessToken, cfg.RefreshToken = credentials.AccessToken, credentials.RefreshToken
 	return send(credentials.AccessToken)
 }
 

@@ -14,6 +14,7 @@ import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as DomainsRouteImport } from './routes/domains'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OrganizationsRouteImport } from './routes/organizations'
+import { Route as PreviewOwnerAccessRouteImport } from './routes/preview-owner-access'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as TunnelsRouteImport } from './routes/tunnels'
 import { Route as AssetsDocumentIdRouteImport } from './routes/assets/$documentId'
@@ -44,6 +45,11 @@ const OrganizationsRoute = OrganizationsRouteImport.update({
   path: '/organizations',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PreviewOwnerAccessRoute = PreviewOwnerAccessRouteImport.update({
+  id: '/preview-owner-access',
+  path: '/preview-owner-access',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/domains': typeof DomainsRoute
   '/login': typeof LoginRoute
   '/organizations': typeof OrganizationsRoute
+  '/preview-owner-access': typeof PreviewOwnerAccessRoute
   '/register': typeof RegisterRoute
   '/tunnels': typeof TunnelsRoute
   '/assets/$documentId': typeof AssetsDocumentIdRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/domains': typeof DomainsRoute
   '/login': typeof LoginRoute
   '/organizations': typeof OrganizationsRoute
+  '/preview-owner-access': typeof PreviewOwnerAccessRoute
   '/register': typeof RegisterRoute
   '/tunnels': typeof TunnelsRoute
   '/assets/$documentId': typeof AssetsDocumentIdRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/domains': typeof DomainsRoute
   '/login': typeof LoginRoute
   '/organizations': typeof OrganizationsRoute
+  '/preview-owner-access': typeof PreviewOwnerAccessRoute
   '/register': typeof RegisterRoute
   '/tunnels': typeof TunnelsRoute
   '/assets/$documentId': typeof AssetsDocumentIdRoute
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/domains'
     | '/login'
     | '/organizations'
+    | '/preview-owner-access'
     | '/register'
     | '/tunnels'
     | '/assets/$documentId'
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/domains'
     | '/login'
     | '/organizations'
+    | '/preview-owner-access'
     | '/register'
     | '/tunnels'
     | '/assets/$documentId'
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/domains'
     | '/login'
     | '/organizations'
+    | '/preview-owner-access'
     | '/register'
     | '/tunnels'
     | '/assets/$documentId'
@@ -141,6 +153,7 @@ export interface RootRouteChildren {
   DomainsRoute: typeof DomainsRoute
   LoginRoute: typeof LoginRoute
   OrganizationsRoute: typeof OrganizationsRoute
+  PreviewOwnerAccessRoute: typeof PreviewOwnerAccessRoute
   RegisterRoute: typeof RegisterRoute
   TunnelsRoute: typeof TunnelsRoute
   AssetsDocumentIdRoute: typeof AssetsDocumentIdRoute
@@ -184,6 +197,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrganizationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/preview-owner-access': {
+      id: '/preview-owner-access'
+      path: '/preview-owner-access'
+      fullPath: '/preview-owner-access'
+      preLoaderRoute: typeof PreviewOwnerAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/register': {
       id: '/register'
       path: '/register'
@@ -221,6 +241,7 @@ const rootRouteChildren: RootRouteChildren = {
   DomainsRoute: DomainsRoute,
   LoginRoute: LoginRoute,
   OrganizationsRoute: OrganizationsRoute,
+  PreviewOwnerAccessRoute: PreviewOwnerAccessRoute,
   RegisterRoute: RegisterRoute,
   TunnelsRoute: TunnelsRoute,
   AssetsDocumentIdRoute: AssetsDocumentIdRoute,

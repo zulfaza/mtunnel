@@ -1,3 +1,13 @@
+import type { Schemas } from "@tunnel/core";
+
+// Code-gated previews are opened through the owner-access route so a signed-in member
+// is granted access without typing the access code.
+export function previewHref(preview: Schemas.PreviewView): string {
+  return preview.visibility === "code"
+    ? `/preview-owner-access?return=${encodeURIComponent(preview.url)}`
+    : preview.url;
+}
+
 export function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
   const units = ["KB", "MB", "GB"];

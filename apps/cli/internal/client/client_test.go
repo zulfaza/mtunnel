@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -351,5 +353,193 @@ func TestHeartbeatWithoutPongReconnects(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("client did not stop")
+	}
+}
+
+// refreshServer answers /api/v1/auth/token with a per-access-token agent token,
+// accepts the websocket only for the agent token minted from "fresh-access", and
+// delegates /api/v1/auth/refresh to the supplied handler.
+func refreshServer(t *testing.T, refresh http.HandlerFunc, connected chan<- struct{}) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/auth/token":
+			if r.Header.Get("Authorization") == "Bearer fresh-access" {
+				_, _ = io.WriteString(w, `{"token":"fresh-agent-token"}`)
+				return
+			}
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		case "/api/v1/auth/refresh":
+			refresh(w, r)
+		default:
+			if r.Header.Get("Authorization") != "Bearer fresh-agent-token" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			conn, err := websocket.Accept(w, r, nil)
+			if err != nil {
+				return
+			}
+			defer conn.CloseNow()
+			ctx := r.Context()
+			if _, err := readServerMessage(ctx, conn); err != nil {
+				return
+			}
+			if err := writeServerMessage(ctx, conn, ack()); err != nil {
+				return
+			}
+			connected <- struct{}{}
+			<-ctx.Done()
+		}
+	}))
+}
+
+func TestRejectedRefreshTokenStopsWithLoginHint(t *testing.T) {
+	server := refreshServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":"invalid_grant"}`)
+	}, make(chan struct{}, 1))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	opts := runOptions(server.URL)
+	opts.Secret = "expired-access"
+	opts.RefreshToken = "revoked-refresh"
+	if err := Run(ctx, opts); !errors.Is(err, ErrSessionExpired) {
+		t.Fatalf("Run() error = %v, want %v", err, ErrSessionExpired)
+	}
+}
+
+func TestTransientRefreshFailureRetriesInsteadOfExiting(t *testing.T) {
+	connected := make(chan struct{}, 1)
+	var refreshes atomic.Int32
+	server := refreshServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if refreshes.Add(1) == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = io.WriteString(w, `{"access_token":"fresh-access","refresh_token":"fresh-refresh"}`)
+	}, connected)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	opts := runOptions(server.URL)
+	opts.Secret = "expired-access"
+	opts.RefreshToken = "old-refresh"
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, opts) }()
+	select {
+	case <-connected:
+		cancel()
+	case err := <-done:
+		t.Fatalf("Run() returned %v instead of retrying the refresh", err)
+	case <-ctx.Done():
+		t.Fatal("client did not connect after a transient refresh failure")
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got := refreshes.Load(); got != 2 {
+		t.Fatalf("refresh attempts = %d, want 2", got)
+	}
+}
+
+func TestRefreshUsesRotatedTokenFromDisk(t *testing.T) {
+	connected := make(chan struct{}, 1)
+	presented := make(chan string, 4)
+	server := refreshServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			RefreshToken string `json:"refreshToken"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		presented <- body.RefreshToken
+		if body.RefreshToken != "rotated-refresh" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_, _ = io.WriteString(w, `{"access_token":"fresh-access","refresh_token":"next-refresh"}`)
+	}, connected)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	opts := runOptions(server.URL)
+	opts.Secret = "expired-access"
+	opts.RefreshToken = "superseded-refresh"
+	opts.LatestRefreshToken = func() string { return "rotated-refresh" }
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, opts) }()
+	select {
+	case <-connected:
+		cancel()
+	case err := <-done:
+		t.Fatalf("Run() returned %v", err)
+	case <-ctx.Done():
+		t.Fatal("client did not connect with the rotated refresh token")
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got := <-presented; got != "rotated-refresh" {
+		t.Fatalf("presented refresh token = %q, want the rotated one from disk", got)
+	}
+}
+
+func TestUnauthorizedWebsocketDialTriggersRefresh(t *testing.T) {
+	connected := make(chan struct{}, 1)
+	var refreshed atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/auth/token":
+			if r.Header.Get("Authorization") == "Bearer fresh-access" {
+				_, _ = io.WriteString(w, `{"token":"fresh-agent-token"}`)
+				return
+			}
+			// The access token still mints an agent token; only the tunnel rejects it.
+			_, _ = io.WriteString(w, `{"token":"stale-agent-token"}`)
+		case "/api/v1/auth/refresh":
+			refreshed.Store(true)
+			_, _ = io.WriteString(w, `{"access_token":"fresh-access","refresh_token":"fresh-refresh"}`)
+		default:
+			if r.Header.Get("Authorization") != "Bearer fresh-agent-token" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			conn, err := websocket.Accept(w, r, nil)
+			if err != nil {
+				return
+			}
+			defer conn.CloseNow()
+			ctx := r.Context()
+			if _, err := readServerMessage(ctx, conn); err != nil {
+				return
+			}
+			if err := writeServerMessage(ctx, conn, ack()); err != nil {
+				return
+			}
+			connected <- struct{}{}
+			<-ctx.Done()
+		}
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	opts := runOptions(server.URL)
+	opts.Secret = "expired-access"
+	opts.RefreshToken = "old-refresh"
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, opts) }()
+	select {
+	case <-connected:
+		cancel()
+	case err := <-done:
+		t.Fatalf("Run() returned %v", err)
+	case <-ctx.Done():
+		t.Fatal("client did not reconnect after an unauthorized websocket dial")
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !refreshed.Load() {
+		t.Fatal("unauthorized websocket dial did not trigger a token refresh")
 	}
 }
