@@ -45,6 +45,7 @@ jobs:
           node-version: 24
           cache: true
       - run: vp install --frozen-lockfile
+      - run: vp run build
       - name: Deploy API Worker
         working-directory: apps/api
         env:
